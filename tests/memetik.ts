@@ -145,7 +145,7 @@ const buyTokens = async (buyer: any, pool: any, amount: number) => {
     mint: getMintPDA(pool.id.toNumber()),
     owner: buyer.publicKey,
   });
-  const priceInSol = getSol(poolFromProgram.tokPrice.toNumber());
+  const priceInSol = getSol(poolFromProgram.tokPrice);
   console.log(
     `Buyer buying ${amount} tokens for ${priceInSol} SOL per token`
   );
@@ -168,7 +168,7 @@ const sellTokens = async (seller: any, pool: any, amount: number) => {
     mint: getMintPDA(pool.id.toNumber()),
     owner: seller.publicKey,
   });
-  const priceInSol = getSol(poolFromPogram.tokPrice.toNumber());
+  const priceInSol = getSol(poolFromPogram.tokPrice);
   console.log(
     `Seller selling ${amount} tokens at ${priceInSol} SOL per token`
   );
@@ -228,7 +228,7 @@ describe('memetik', () => {
       assert.ok(pool);
       assert.ok(creatorTokenBalance === 0);
       createdPools.push(pool);
-      console.log('Token Price at creation:', pool.tokPrice.toNumber());
+      console.log('Token Price at creation:', pool.tokPrice);
     } catch (err) {
       console.log('Create token', err);
       assert.fail('Transaction failed');
@@ -265,7 +265,7 @@ describe('memetik', () => {
       assert.ok(pool);
       assert.ok(creatorTokenBalance === 0);
       createdPools.push(pool);
-      console.log('Token Price at creation:', pool.tokPrice.toNumber());
+      console.log('Token Price at creation:', pool.tokPrice);
     } catch (err) {
       console.log('Create token', err);
       assert.fail('Transaction failed');
@@ -274,7 +274,7 @@ describe('memetik', () => {
 
   it('Can buy tokens', async () => {
     const buyer = userB;
-    const amount = getLamports(1);
+    const amount = 1;
     const firstPool = createdPools[0];
     try {
       const buyerTokenAccount = await anchor.utils.token.associatedAddress(
@@ -306,7 +306,7 @@ describe('memetik', () => {
           owner: buyer.publicKey,
         }
       );
-      const totalAmountToBy = getLamports(1);
+      const totalAmountToBy = 1000000;
       const batchAmount = totalAmountToBy / 2;
       let amountPurchased = 0;
       while (amountPurchased < totalAmountToBy) {
@@ -324,13 +324,11 @@ describe('memetik', () => {
         console.log('tokenBalanceAfter', tokenBalanceAfter);
         assert.ok(solBalanceAfter < solBalBefore);
         assert.ok(tokenBalanceAfter > tokBalBefore);
-        assert.ok(
-          poolAfter.tokPrice.toNumber() > tokPriceBefore.toNumber()
-        );
+        assert.ok(poolAfter.tokPrice > tokPriceBefore);
         tokPriceBefore = poolAfter.tokPrice;
         solBalBefore = solBalanceAfter;
         amountPurchased += batchAmount;
-        console.log('New Token price:', poolAfter.tokPrice.toNumber());
+        console.log('New Token price:', poolAfter.tokPrice);
       }
     } catch (err) {
       console.log('Can buy demand error', err);
@@ -357,7 +355,9 @@ describe('memetik', () => {
       const poolAfter = await program.account.pool.fetch(poolPDA);
       assert.ok(sellerSolBalAfter > sellerSolBalBefore);
       assert.ok(sellerTokBalAfter < sellerTokBalBefore);
-      assert.ok(poolAfter.tokPrice.toNumber() < priceBefore.toNumber());
+      console.log('price before sell', priceBefore);
+      console.log('price after sell', poolAfter.tokPrice);
+      assert.ok(poolAfter.tokPrice < priceBefore);
     } catch (err) {
       console.log('Can sell err', err);
       assert.fail('Transaction failed');
@@ -386,11 +386,11 @@ describe('memetik', () => {
         const poolAfter = await program.account.pool.fetch(poolPDA);
         const solBalanceAfter = await getSOLBalance(seller.publicKey);
         const tokenBalanceAfter = await getSPLBalance(sellerTokenAccount);
+        console.log('price before sell', tokPriceBefore);
+        console.log('price after sell', poolAfter.tokPrice);
         assert.ok(tokenBalanceAfter < tokBalBefore);
         assert.ok(solBalanceAfter > solBalBefore);
-        assert.ok(
-          poolAfter.tokPrice.toNumber() < tokPriceBefore.toNumber()
-        );
+        assert.ok(poolAfter.tokPrice < tokPriceBefore);
         solBalBefore = solBalanceAfter;
         tokBalBefore = tokenBalanceAfter;
         tokPriceBefore = poolAfter.tokPrice;

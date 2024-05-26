@@ -8,10 +8,7 @@ use anchor_spl::{
     },
     token::{self, mint_to, Burn, Mint, MintTo, Token, TokenAccount},
 };
-use pool::{
-    calculate_price_per_unit, calculate_total_cost, get_new_supply, get_starting_tok_price, Pool,
-    TOKEN_DECIMALS,
-};
+use pool::{calculate_price, get_starting_tok_price, Pool, TOKEN_DECIMALS};
 
 mod pool;
 
@@ -87,12 +84,7 @@ pub mod memetik {
         require!(amount > 0, Error::MustBuyAtLeastOneToken);
 
         let current_supply = ctx.accounts.mint.supply;
-        let pool_balance = ctx.accounts.pool.to_account_info().lamports();
-        let total_cost = calculate_total_cost(current_supply, pool_balance, amount);
-
-        msg!("Current supply: {}", current_supply);
-        msg!("Total SOL to pay: {}", total_cost);
-        msg!("Amount of tokens to mint: {}", amount);
+        let (total_cost, price_per_unit) = calculate_price(current_supply, amount, false);
 
         // Transfer SOL to the pool
         let transfer_instruction = system_instruction::transfer(
@@ -135,15 +127,9 @@ pub mod memetik {
         )?;
 
         // Update the token price based on the new supply
-        let new_supply = get_new_supply(current_supply, amount, false);
-        ctx.accounts.pool.tok_price = calculate_price_per_unit(new_supply);
+        ctx.accounts.pool.tok_price = price_per_unit;
 
         msg!("Tokens minted to buyer successfully");
-        msg!(
-            "New token supply: {}",
-            current_supply.checked_add(amount).unwrap()
-        );
-        msg!("New token price: {}", ctx.accounts.pool.tok_price);
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }
@@ -156,12 +142,7 @@ pub mod memetik {
         );
 
         let current_supply = ctx.accounts.mint.supply;
-        let pool_balance = ctx.accounts.pool.to_account_info().lamports();
-        let sol_to_receive = calculate_total_cost(current_supply, pool_balance, amount);
-
-        msg!("Current supply: {}", current_supply);
-        msg!("Pool balance before transaction: {}", pool_balance);
-        msg!("SOL to receive: {}", sol_to_receive);
+        let (sol_to_receive, price_per_unit) = calculate_price(current_supply, amount, true);
 
         // Burn the tokens from the seller's token account
         let cpi_accounts = Burn {
@@ -190,15 +171,7 @@ pub mod memetik {
         msg!("SOL transferred to seller successfully.");
 
         // Update the token price based on the new supply
-        let new_supply = get_new_supply(current_supply, amount, true);
-        ctx.accounts.pool.tok_price = calculate_price_per_unit(new_supply);
-
-        msg!("New supply after transaction: {}", new_supply);
-        msg!("New token price: {}", ctx.accounts.pool.tok_price);
-        msg!(
-            "Pool balance after transaction: {}",
-            ctx.accounts.pool.to_account_info().lamports()
-        );
+        ctx.accounts.pool.tok_price = price_per_unit;
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }
