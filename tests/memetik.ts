@@ -122,6 +122,22 @@ const getPoolPDA = (poolId: number | anchor.BN) => {
   return poolPDA;
 };
 
+const getNextPoolId = async () => {
+  const globalStatePda = getGlobalStatePda();
+  try {
+    const globalState = await program.account.globalState.fetch(
+      globalStatePda
+    );
+    return globalState.poolsCreated.toNumber() + 1;
+  } catch (err) {
+    const accountDoesNotExist = err?.message?.includes(
+      'Account does not exist'
+    );
+    if (accountDoesNotExist) return 1;
+    throw err;
+  }
+};
+
 const buyTokens = async (buyer: any, pool: any, amount: number) => {
   const poolPDA = getPoolPDA(pool.id.toNumber());
   const poolFromProgram = await program.account.pool.fetch(poolPDA);
@@ -188,11 +204,11 @@ describe('memetik', () => {
       symbol: 'WEE',
       uri: '',
     };
-    const creator = userA;
-    const poolId = createdPools.length + 1;
-    const mint = getMintPDA(poolId);
-    const metadata = getMetadataPDA(mint);
     try {
+      const creator = userA;
+      const poolId = await getNextPoolId();
+      const mint = getMintPDA(poolId);
+      const metadata = getMetadataPDA(mint);
       const txn = await program.methods
         .initialize(new anchor.BN(poolId), tok)
         .accounts({
@@ -226,7 +242,7 @@ describe('memetik', () => {
       uri: '',
     };
     const creator = userA;
-    const poolId = createdPools.length + 1;
+    const poolId = await getNextPoolId();
     const mint = getMintPDA(poolId);
     const metadata = getMetadataPDA(mint);
     try {

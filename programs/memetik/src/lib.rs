@@ -15,7 +15,7 @@ use pool::{
 
 mod pool;
 
-declare_id!("AryGSmQ8KjdJCjTF6ta9DZXse4JnCJvohYnJ9btkm9gZ");
+declare_id!("BcZKd6ipvZi4Cs12bf3qSxLSf67nCHKgzFJvrUtCr9vZ");
 
 #[program]
 pub mod memetik {
@@ -26,6 +26,12 @@ pub mod memetik {
         pool_id: u64,
         token_info: TokenArgs,
     ) -> Result<Pool> {
+        let global_state = &mut ctx.accounts.global_state;
+
+        // check if valid id for consitency on pool identifiers
+        let expected_pool_id = global_state.pools_created + 1;
+        require!(pool_id == expected_pool_id, Error::InvalidPoolId);
+
         let creator = &ctx.accounts.signer;
         let pool = &mut ctx.accounts.pool;
 
@@ -70,6 +76,9 @@ pub mod memetik {
         pool.id = pool_id;
         pool.tok_price = get_starting_tok_price();
         pool.mint = *ctx.accounts.mint.to_account_info().key;
+
+        // increment the global state pools creat
+        global_state.pools_created += 1;
 
         Ok(pool.clone().into_inner())
     }
@@ -154,7 +163,7 @@ pub mod memetik {
         msg!("Pool balance before transaction: {}", pool_balance);
         msg!("SOL to receive: {}", sol_to_receive);
 
-        // Burn the tokens from the seller's account
+        // Burn the tokens from the seller's token account
         let cpi_accounts = Burn {
             mint: ctx.accounts.mint.to_account_info().clone(),
             from: ctx.accounts.seller_token_account.to_account_info().clone(),
@@ -220,6 +229,14 @@ pub struct Initialize<'info> {
         mint::authority = mint,
     )]
     pub mint: Account<'info, Mint>,
+    #[account(
+        init_if_needed,
+        payer = signer,
+        seeds = [b"global-state"],
+        bump,
+        space = 8 + std::mem::size_of::<GlobalState>()
+    )]
+    pub global_state: Account<'info, GlobalState>,
     pub rent: Sysvar<'info, Rent>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
@@ -251,6 +268,12 @@ pub struct Buy<'info> {
         associated_token::authority = buyer,
     )]
     pub buyer_token_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        seeds = [b"global-state"],
+        bump,
+    )]
+    pub global_state: Account<'info, GlobalState>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -276,6 +299,12 @@ pub struct Sell<'info> {
     pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub seller_token_account: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        seeds = [b"global-state"],
+        bump,
+    )]
+    pub global_state: Account<'info, GlobalState>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -286,6 +315,11 @@ pub struct TokenArgs {
     pub name: String,
     pub symbol: String,
     pub uri: String,
+}
+
+#[account]
+pub struct GlobalState {
+    pub pools_created: u64,
 }
 
 #[error_code]
@@ -302,4 +336,6 @@ pub enum Error {
     Overflow,
     #[msg("Pool has insufficient funds")]
     PoolInsufficientFunds,
+    #[msg("Invalid pool id")]
+    InvalidPoolId,
 }
