@@ -8,7 +8,7 @@ use anchor_spl::{
     },
     token::{self, mint_to, Burn, Mint, MintTo, Token, TokenAccount},
 };
-use pool::{calculate_price, get_starting_tok_price, Pool, TOKEN_DECIMALS};
+use pool::{calculate_price, MIN_TOK_PRICE, Pool, TOKEN_DECIMALS}; 
 
 mod pool;
 
@@ -71,7 +71,7 @@ pub mod memetik {
         msg!("Token mint created successfully.");
 
         pool.id = pool_id;
-        pool.tok_price = get_starting_tok_price() as u64;
+        pool.tok_price = MIN_TOK_PRICE as u64;
         pool.mint = *ctx.accounts.mint.to_account_info().key;
 
         // increment the global state pools creat

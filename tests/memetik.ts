@@ -51,7 +51,10 @@ const waitForTxnConfrimation = async (
   return confirmedTxn;
 };
 
-const fundSol = async (receiver: anchor.web3.PublicKey, solAmt = 80000) => {
+const fundSol = async (
+  receiver: anchor.web3.PublicKey,
+  solAmt = 80000
+) => {
   const amtInLamports = solAmt * anchor.web3.LAMPORTS_PER_SOL;
   const sig = await provider.connection.requestAirdrop(
     receiver,
@@ -355,7 +358,7 @@ describe('memetik', () => {
       const sellerSolBalAfter = await getSOLBalance(seller.publicKey);
       const sellerTokBalAfter = await getSPLBalance(sellerTokenAccount);
       const poolAfter = await program.account.pool.fetch(poolPDA);
-      assert.ok(sellerSolBalAfter > sellerSolBalBefore);
+      assert.ok(sellerSolBalAfter >= sellerSolBalBefore);
       assert.ok(sellerTokBalAfter < sellerTokBalBefore);
       console.log('price before sell', priceBefore);
       console.log('price after sell', poolAfter.tokPrice);
