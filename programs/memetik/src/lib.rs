@@ -8,7 +8,7 @@ use anchor_spl::{
     },
     token::{self, mint_to, Burn, Mint, MintTo, Token, TokenAccount},
 };
-use pool::{calculate_price, MIN_TOK_PRICE, Pool, TOKEN_DECIMALS}; 
+use pool::{calculate_price, Pool, MIN_TOK_PRICE, TOKEN_DECIMALS};
 
 mod pool;
 
@@ -84,7 +84,7 @@ pub mod memetik {
         require!(amount > 0, Error::MustBuyAtLeastOneToken);
 
         let current_supply = ctx.accounts.mint.supply;
-        let (total_cost, new_price_per_unit) = calculate_price(current_supply, amount, false);
+        let (total_cost, latest_price_per_unit) = calculate_price(current_supply, amount, false);
 
         // Transfer SOL to the pool
         let transfer_instruction = system_instruction::transfer(
@@ -123,7 +123,7 @@ pub mod memetik {
         )?;
 
         // Update the token price based on the new supply
-        ctx.accounts.pool.tok_price = new_price_per_unit;
+        ctx.accounts.pool.tok_price = latest_price_per_unit;
 
         msg!("Tokens minted to buyer successfully");
         msg!(
@@ -142,7 +142,7 @@ pub mod memetik {
         );
 
         let current_supply = ctx.accounts.mint.supply;
-        let (sol_to_receive, new_price_per_unit) = calculate_price(current_supply, amount, true);
+        let (sol_to_receive, latest_price_per_unit) = calculate_price(current_supply, amount, true);
 
         // check if pool has enough funds to buy token from seller
         let min_pool_rent = 8 + std::mem::size_of::<Pool>() as u64;
@@ -188,7 +188,7 @@ pub mod memetik {
         );
 
         // Update the token price based on the new supply
-        ctx.accounts.pool.tok_price = new_price_per_unit;
+        ctx.accounts.pool.tok_price = latest_price_per_unit;
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }

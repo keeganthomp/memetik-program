@@ -309,7 +309,7 @@ describe('memetik', () => {
           owner: buyer.publicKey,
         }
       );
-      const totalAmountToBy = getLamports(60);
+      const totalAmountToBy = getLamports(250);
       const batchAmount = totalAmountToBy / 12;
       let amountPurchased = 0;
       while (amountPurchased < totalAmountToBy) {
@@ -360,8 +360,6 @@ describe('memetik', () => {
       const poolAfter = await program.account.pool.fetch(poolPDA);
       assert.ok(sellerSolBalAfter >= sellerSolBalBefore);
       assert.ok(sellerTokBalAfter < sellerTokBalBefore);
-      console.log('price before sell', priceBefore);
-      console.log('price after sell', poolAfter.tokPrice);
       assert.ok(poolAfter.tokPrice.toNumber() <= priceBefore.toNumber());
     } catch (err) {
       console.log('Can sell err', err);
@@ -391,8 +389,6 @@ describe('memetik', () => {
         const poolAfter = await program.account.pool.fetch(poolPDA);
         const solBalanceAfter = await getSOLBalance(seller.publicKey);
         const tokenBalanceAfter = await getSPLBalance(sellerTokenAccount);
-        console.log('price before sell', tokPriceBefore);
-        console.log('price after sell', poolAfter.tokPrice);
         assert.ok(tokenBalanceAfter < tokBalBefore);
         assert.ok(solBalanceAfter > solBalBefore);
         assert.ok(

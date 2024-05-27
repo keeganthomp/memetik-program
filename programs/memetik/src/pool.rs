@@ -32,7 +32,6 @@ pub fn to_atomic_units(amount: f64) -> u64 {
 
 pub fn calculate_price(current_supply: u64, amount: u64, is_selling: bool) -> (u64, u64) {
     msg!("========Calculating price========");
-
     // Convert atomic units to whole units
     let current_supply_units = to_whole_units(current_supply);
     let amount_units = to_whole_units(amount);
@@ -52,13 +51,13 @@ pub fn calculate_price(current_supply: u64, amount: u64, is_selling: bool) -> (u
 
     // Calculate price per whole unit correctly
     let price_per_unit_f64 = price_function(new_supply_units);
-    let price_per_whole_unit = to_atomic_units(price_per_unit_f64);
+    let price_per_unit = to_atomic_units(price_per_unit_f64);
 
     msg!("Old supply (units): {}", current_supply_units);
     msg!("Amount (units): {}", amount_units);
     msg!("New supply (units): {}", new_supply_units);
     msg!("Total cost: {}", total_cost_lamports);
-    msg!("Price per whole unit: {}", price_per_whole_unit);
+    msg!("Price per whole unit: {}", price_per_unit);
 
-    (total_cost_lamports, price_per_whole_unit)
+    (total_cost_lamports, price_per_unit)
 }
