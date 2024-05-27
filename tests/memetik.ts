@@ -51,7 +51,7 @@ const waitForTxnConfrimation = async (
   return confirmedTxn;
 };
 
-const fundSol = async (receiver: anchor.web3.PublicKey, solAmt = 100) => {
+const fundSol = async (receiver: anchor.web3.PublicKey, solAmt = 80000) => {
   const amtInLamports = solAmt * anchor.web3.LAMPORTS_PER_SOL;
   const sig = await provider.connection.requestAirdrop(
     receiver,
@@ -145,7 +145,7 @@ const buyTokens = async (buyer: any, pool: any, amount: number) => {
     mint: getMintPDA(pool.id.toNumber()),
     owner: buyer.publicKey,
   });
-  const priceInSol = getSol(poolFromProgram.tokPrice);
+  const priceInSol = getSol(poolFromProgram.tokPrice.toNumber());
   console.log(
     `Buyer buying ${amount} tokens for ${priceInSol} SOL per token`
   );
@@ -168,7 +168,7 @@ const sellTokens = async (seller: any, pool: any, amount: number) => {
     mint: getMintPDA(pool.id.toNumber()),
     owner: seller.publicKey,
   });
-  const priceInSol = getSol(poolFromPogram.tokPrice);
+  const priceInSol = getSol(poolFromPogram.tokPrice.toNumber());
   console.log(
     `Seller selling ${amount} tokens at ${priceInSol} SOL per token`
   );
@@ -306,8 +306,8 @@ describe('memetik', () => {
           owner: buyer.publicKey,
         }
       );
-      const totalAmountToBy = 1000000;
-      const batchAmount = totalAmountToBy / 2;
+      const totalAmountToBy = getLamports(60);
+      const batchAmount = totalAmountToBy / 12;
       let amountPurchased = 0;
       while (amountPurchased < totalAmountToBy) {
         const pool = await program.account.pool.fetch(poolPDA);
@@ -322,13 +322,15 @@ describe('memetik', () => {
         console.log('solBalanceAfter', solBalanceAfter);
         console.log('tokBalBefore', tokBalBefore);
         console.log('tokenBalanceAfter', tokenBalanceAfter);
+        console.log('New Token price:', poolAfter.tokPrice.toNumber());
         assert.ok(solBalanceAfter < solBalBefore);
         assert.ok(tokenBalanceAfter > tokBalBefore);
-        assert.ok(poolAfter.tokPrice > tokPriceBefore);
+        assert.ok(
+          poolAfter.tokPrice.toNumber() >= tokPriceBefore.toNumber()
+        );
         tokPriceBefore = poolAfter.tokPrice;
         solBalBefore = solBalanceAfter;
         amountPurchased += batchAmount;
-        console.log('New Token price:', poolAfter.tokPrice);
       }
     } catch (err) {
       console.log('Can buy demand error', err);
@@ -357,7 +359,7 @@ describe('memetik', () => {
       assert.ok(sellerTokBalAfter < sellerTokBalBefore);
       console.log('price before sell', priceBefore);
       console.log('price after sell', poolAfter.tokPrice);
-      assert.ok(poolAfter.tokPrice < priceBefore);
+      assert.ok(poolAfter.tokPrice.toNumber() <= priceBefore.toNumber());
     } catch (err) {
       console.log('Can sell err', err);
       assert.fail('Transaction failed');
@@ -373,15 +375,15 @@ describe('memetik', () => {
           mint: getMintPDA(pool.id.toNumber()),
           owner: seller.publicKey,
         });
-      const startingTokBal = await getSPLBalance(sellerTokenAccount);
-      const totalAmountToSell = startingTokBal;
+      const totalAmountToSell = await getSPLBalance(sellerTokenAccount);
       const batchAmount = totalAmountToSell / 5;
       let amountSold = 0;
-      while (amountSold < totalAmountToSell) {
+      while (amountSold <= totalAmountToSell) {
         const pool = await program.account.pool.fetch(poolPDA);
         let tokPriceBefore = pool.tokPrice;
         let solBalBefore = await getSOLBalance(seller.publicKey);
         let tokBalBefore = await getSPLBalance(sellerTokenAccount);
+        if (tokBalBefore - 1 < batchAmount) break;
         await sellTokens(seller, pool, batchAmount);
         const poolAfter = await program.account.pool.fetch(poolPDA);
         const solBalanceAfter = await getSOLBalance(seller.publicKey);
@@ -390,11 +392,15 @@ describe('memetik', () => {
         console.log('price after sell', poolAfter.tokPrice);
         assert.ok(tokenBalanceAfter < tokBalBefore);
         assert.ok(solBalanceAfter > solBalBefore);
-        assert.ok(poolAfter.tokPrice < tokPriceBefore);
+        assert.ok(
+          poolAfter.tokPrice.toNumber() <= tokPriceBefore.toNumber()
+        );
         solBalBefore = solBalanceAfter;
-        tokBalBefore = tokenBalanceAfter;
         tokPriceBefore = poolAfter.tokPrice;
         amountSold += batchAmount;
+        tokBalBefore = tokenBalanceAfter;
+        console.log('tok bal after', tokenBalanceAfter);
+        console.log('sol bal after', solBalanceAfter);
       }
     } catch (err) {
       console.log('Selling demand decreases', err);

@@ -12,7 +12,7 @@ use pool::{calculate_price, get_starting_tok_price, Pool, TOKEN_DECIMALS};
 
 mod pool;
 
-declare_id!("BcZKd6ipvZi4Cs12bf3qSxLSf67nCHKgzFJvrUtCr9vZ");
+declare_id!("CNxJRUWzdo77LtxyuU4E87xrb5FougY7VP8ZwEJkzcat");
 
 #[program]
 pub mod memetik {
@@ -71,7 +71,7 @@ pub mod memetik {
         msg!("Token mint created successfully.");
 
         pool.id = pool_id;
-        pool.tok_price = get_starting_tok_price();
+        pool.tok_price = get_starting_tok_price() as u64;
         pool.mint = *ctx.accounts.mint.to_account_info().key;
 
         // increment the global state pools creat
@@ -84,7 +84,7 @@ pub mod memetik {
         require!(amount > 0, Error::MustBuyAtLeastOneToken);
 
         let current_supply = ctx.accounts.mint.supply;
-        let (total_cost, price_per_unit) = calculate_price(current_supply, amount, false);
+        let (total_cost, new_price_per_unit) = calculate_price(current_supply, amount, false);
 
         // Transfer SOL to the pool
         let transfer_instruction = system_instruction::transfer(
@@ -104,10 +104,6 @@ pub mod memetik {
         )?;
 
         msg!("SOL transferred to pool successfully");
-        msg!(
-            "Pool balance: {}",
-            ctx.accounts.pool.to_account_info().lamports()
-        );
 
         let seeds = &["mint".as_bytes(), &pool_id.to_le_bytes(), &[ctx.bumps.mint]];
         let signer = [&seeds[..]];
@@ -127,9 +123,13 @@ pub mod memetik {
         )?;
 
         // Update the token price based on the new supply
-        ctx.accounts.pool.tok_price = price_per_unit;
+        ctx.accounts.pool.tok_price = new_price_per_unit;
 
         msg!("Tokens minted to buyer successfully");
+        msg!(
+            "Pool balance after buy: {}",
+            ctx.accounts.pool.to_account_info().lamports()
+        );
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }
@@ -142,7 +142,19 @@ pub mod memetik {
         );
 
         let current_supply = ctx.accounts.mint.supply;
-        let (sol_to_receive, price_per_unit) = calculate_price(current_supply, amount, true);
+        let (sol_to_receive, new_price_per_unit) = calculate_price(current_supply, amount, true);
+
+        // check if pool has enough funds to buy token from seller
+        let min_pool_rent = 8 + std::mem::size_of::<Pool>() as u64;
+        require!(
+            ctx.accounts.pool.to_account_info().lamports() >= (sol_to_receive + min_pool_rent),
+            Error::PoolInsufficientFunds
+        );
+
+        msg!(
+            "Pool bal {}",
+            ctx.accounts.pool.to_account_info().lamports()
+        );
 
         // Burn the tokens from the seller's token account
         let cpi_accounts = Burn {
@@ -170,8 +182,13 @@ pub mod memetik {
 
         msg!("SOL transferred to seller successfully.");
 
+        msg!(
+            "Pool balance after sell: {}",
+            ctx.accounts.pool.to_account_info().lamports()
+        );
+
         // Update the token price based on the new supply
-        ctx.accounts.pool.tok_price = price_per_unit;
+        ctx.accounts.pool.tok_price = new_price_per_unit;
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }
