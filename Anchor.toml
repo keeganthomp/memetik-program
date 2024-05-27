@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-memetik = "CNxJRUWzdo77LtxyuU4E87xrb5FougY7VP8ZwEJkzcat"
+memetik = "AQWyAazxs3Dz6vJVBAb5wKu4pN9scWqVansE7g2gyKGg"
 
 [registry]
 url = "https://api.apr.dev"

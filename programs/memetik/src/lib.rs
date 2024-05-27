@@ -12,7 +12,7 @@ use pool::{calculate_price, Pool, MIN_TOK_PRICE, TOKEN_DECIMALS};
 
 mod pool;
 
-declare_id!("CNxJRUWzdo77LtxyuU4E87xrb5FougY7VP8ZwEJkzcat");
+declare_id!("AQWyAazxs3Dz6vJVBAb5wKu4pN9scWqVansE7g2gyKGg");
 
 #[program]
 pub mod memetik {
