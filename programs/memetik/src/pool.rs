@@ -9,11 +9,11 @@ pub struct Pool {
 
 pub const TOKEN_DECIMALS: u8 = 9;
 pub const TOKEN_SCALE: f64 = 1_000_000_000.0; // 10^9, precomputed for TOKEN_DECIMALS = 9
-pub const MIN_TOK_PRICE: f64 = 100.0 / TOKEN_SCALE; // 100 lamports in atomic units
+pub const MIN_TOK_PRICE: f64 = 1.0 / TOKEN_SCALE; // 100 lamports in atomic units
 
 // Quadratic bonding curve constants
-pub const A: f64 = 1e-18; // Impact: High - Dominates at large supply values, causing exponential increase
-pub const B: f64 = 1e-9; // Impact: Moderate - Influences both initial and ongoing price increases
+pub const A: f64 = 1e-13; // Impact: High - Dominates at large supply values, causing exponential increase
+pub const B: f64 = 1e-10; // Impact: Moderate - Influences both initial and ongoing price increases
 pub const C: f64 = MIN_TOK_PRICE; // Impact: Low - Sets the minimum price and initial price floor
 
 pub fn price_function(n: f64) -> f64 {
