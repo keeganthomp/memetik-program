@@ -1,33 +1,17 @@
 use anchor_lang::prelude::*;
-
-#[account]
-pub struct Pool {
-    pub id: u64,
-    pub tok_price: u64, // Store price in atomic units
-    pub mint: Pubkey,
-}
-
-pub const TOKEN_DECIMALS: u8 = 9;
-pub const TOKEN_SCALE: f64 = 1_000_000_000.0; // 10^9, precomputed for TOKEN_DECIMALS = 9
-pub const MIN_TOK_PRICE: f64 = 1.0 / TOKEN_SCALE; // 100 lamports in atomic units
+use crate::constants::*;
+use crate::utils::*;
 
 // Quadratic bonding curve constants
-pub const A: f64 = 1e-13; // Impact: High - Dominates at large supply values, causing exponential increase
-pub const B: f64 = 1e-10; // Impact: Moderate - Influences both initial and ongoing price increases
-pub const C: f64 = MIN_TOK_PRICE; // Impact: Low - Sets the minimum price and initial price floor
+const A: f64 = 1e-13; // Impact: High - Dominates at large supply values, causing exponential increase
+const B: f64 = 1e-10; // Impact: Moderate - Influences both initial and ongoing price increases
+const C: f64 = MIN_TOK_PRICE; // Impact: Low - Sets the minimum price and initial price floor
 
-pub fn price_function(n: f64) -> f64 {
+fn price_function(n: f64) -> f64 {
     A * n.powf(2.0) + B * n + C
 }
-pub fn integral_function(n: f64) -> f64 {
+fn integral_function(n: f64) -> f64 {
     (A / 3.0) * n.powf(3.0) + (B / 2.0) * n.powf(2.0) + C * n
-}
-
-pub fn to_whole_units(amount: u64) -> f64 {
-    amount as f64 / TOKEN_SCALE
-}
-pub fn to_atomic_units(amount: f64) -> u64 {
-    (amount * TOKEN_SCALE).round() as u64
 }
 
 pub fn calculate_price(current_supply: u64, amount: u64, is_selling: bool) -> (u64, u64) {

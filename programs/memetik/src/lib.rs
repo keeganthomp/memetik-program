@@ -8,9 +8,14 @@ use anchor_spl::{
     },
     token::{self, mint_to, Burn, Mint, MintTo, Token, TokenAccount},
 };
-use pool::{calculate_price, Pool, MIN_TOK_PRICE, TOKEN_DECIMALS};
 
-mod pool;
+use bonding_curve::*;
+use constants::*;
+use utils::*;
+
+mod bonding_curve;
+mod constants;
+mod utils;
 
 declare_id!("AQWyAazxs3Dz6vJVBAb5wKu4pN9scWqVansE7g2gyKGg");
 
@@ -18,26 +23,29 @@ declare_id!("AQWyAazxs3Dz6vJVBAb5wKu4pN9scWqVansE7g2gyKGg");
 pub mod memetik {
     use super::*;
 
-    pub fn initialize(
-        ctx: Context<Initialize>,
-        pool_id: u64,
-        token_info: TokenArgs,
-    ) -> Result<Pool> {
-        let global_state = &mut ctx.accounts.global_state;
-
-        // check if valid id for consitency on pool identifiers
-        let expected_pool_id = global_state.pools_created + 1;
-        require!(pool_id == expected_pool_id, Error::InvalidPoolId);
-
+    pub fn initialize(ctx: Context<Initialize>, token_info: TokenArgs) -> Result<Pool> {
         let creator = &ctx.accounts.signer;
         let pool = &mut ctx.accounts.pool;
+        let escrow = &mut ctx.accounts.escrow;
 
-        let seeds = &["mint".as_bytes(), &pool_id.to_le_bytes(), &[ctx.bumps.mint]];
+        require!(
+            check_valid_ticker(&token_info.symbol),
+            Error::InvalidTickerFormat
+        );
+
+        /////////////////////////////////
+        // Create the token mint
+        /////////////////////////////////
+        let seeds = &[
+            "mint".as_bytes(),
+            &token_info.symbol.as_bytes(),
+            &[ctx.bumps.mint],
+        ];
         let signer = [&seeds[..]];
 
         let token_data: DataV2 = DataV2 {
             name: token_info.name,
-            symbol: token_info.symbol,
+            symbol: token_info.symbol.clone(),
             uri: token_info.uri,
             seller_fee_basis_points: 0,
             creators: None,
@@ -67,20 +75,78 @@ pub mod memetik {
             update_authority_is_signer,
             collection_details,
         )?;
-
         msg!("Token mint created successfully.");
 
-        pool.id = pool_id;
-        pool.tok_price = MIN_TOK_PRICE as u64;
-        pool.mint = *ctx.accounts.mint.to_account_info().key;
+        /////////////////////////////////
+        // Transfer SOL into pool escrow
+        /////////////////////////////////
+        let transfer_instruction =
+            system_instruction::transfer(&creator.key(), &escrow.key(), REQUIRED_ESCROW_AMOUNT);
+        let system_program = ctx.accounts.system_program.as_ref();
+        anchor_lang::solana_program::program::invoke_signed(
+            &transfer_instruction,
+            &[
+                creator.to_account_info(),
+                escrow.to_account_info(),
+                system_program.to_account_info(),
+            ],
+            &[],
+        )?;
+        msg!("SOL transferred intoto escrow successfully");
 
-        // increment the global state pools creat
-        global_state.pools_created += 1;
+        // init escrow
+        escrow.pool = *pool.to_account_info().key;
+        escrow.mint = *ctx.accounts.mint.to_account_info().key;
+        escrow.owner = *creator.to_account_info().key;
+        escrow.balance = REQUIRED_ESCROW_AMOUNT;
+
+        // init pool
+        let maturity_time_timestamp = calculate_test_time(); // time the pool has to reach milestone (maturity)
+        pool.creator = *creator.to_account_info().key;
+        pool.mint = *ctx.accounts.mint.to_account_info().key;
+        pool.ticker = token_info.symbol;
+        pool.tok_price = MIN_TOK_PRICE as u64;
+        pool.maturity_time = maturity_time_timestamp;
+        pool.has_matured = false;
 
         Ok(pool.clone().into_inner())
     }
 
-    pub fn buy(ctx: Context<Buy>, pool_id: u64, amount: u64) -> Result<Pool> {
+    pub fn close(ctx: Context<Close>, ticker: String) -> Result<()> {
+        let closer = &ctx.accounts.creator;
+        let pool = &ctx.accounts.pool;
+        let escrow = &ctx.accounts.escrow;
+        let escrow_sol_balance = escrow.get_lamports();
+
+        require!(pool.ticker == ticker, Error::InvalidPoolTicker);
+        require!(
+            pool.creator == *closer.to_account_info().key,
+            Error::NotPoolCreator
+        );
+        require!(
+            escrow.pool == *pool.to_account_info().key,
+            Error::InvalidEscrowAccount
+        );
+        require!(
+            escrow.owner == *closer.to_account_info().key,
+            Error::NotEscrowOwner
+        );
+        msg!("pool maturity time: {}", pool.maturity_time);
+        msg!("current timestamp: {}", Clock::get()?.unix_timestamp);
+        require!(
+            check_if_maturity_time_passed(pool.maturity_time),
+            Error::PoolNotMatured
+        );
+
+        require!(
+            escrow_sol_balance > 0 && escrow.balance > 0 && escrow_sol_balance >= escrow.balance,
+            Error::InsufficientFundsInEscrow
+        );
+
+        Ok(())
+    }
+
+    pub fn buy(ctx: Context<Buy>, ticker: String, amount: u64) -> Result<Pool> {
         require!(amount > 0, Error::MustBuyAtLeastOneToken);
 
         let current_supply = ctx.accounts.mint.supply;
@@ -102,10 +168,9 @@ pub mod memetik {
             ],
             &[],
         )?;
+        msg!("SOL sent to pool successfully");
 
-        msg!("SOL transferred to pool successfully");
-
-        let seeds = &["mint".as_bytes(), &pool_id.to_le_bytes(), &[ctx.bumps.mint]];
+        let seeds = &["mint".as_bytes(), ticker.as_bytes(), &[ctx.bumps.mint]];
         let signer = [&seeds[..]];
 
         // Mint the tokens to the buyer's account in atomic units
@@ -121,20 +186,24 @@ pub mod memetik {
             ),
             amount,
         )?;
+        msg!("Tokens minted to buyer successfully");
 
         // Update the token price based on the new supply
         ctx.accounts.pool.tok_price = latest_price_per_unit;
 
-        msg!("Tokens minted to buyer successfully");
-        msg!(
-            "Pool balance after buy: {}",
-            ctx.accounts.pool.to_account_info().lamports()
-        );
+        // check if pool has matured
+        let new_pool_balance = ctx.accounts.pool.to_account_info().lamports();
+        let has_reached_maturity_amount = check_if_maturity_amount_reached(new_pool_balance);
+
+        // https://github.com/raydium-io/raydium-amm
+        if has_reached_maturity_amount {
+            ctx.accounts.pool.has_matured = true;
+        }
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }
 
-    pub fn sell(ctx: Context<Sell>, _pool_id: u64, amount: u64) -> Result<Pool> {
+    pub fn sell(ctx: Context<Sell>, _ticker: String, amount: u64) -> Result<Pool> {
         require!(amount > 0, Error::NoTokensToSell);
         require!(
             ctx.accounts.seller_token_account.amount >= amount,
@@ -165,7 +234,6 @@ pub mod memetik {
         let cpi_context =
             CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
         token::burn(cpi_context, amount)?;
-
         msg!("Tokens burned successfully");
 
         // Transfer SOL from the pool to the seller
@@ -192,41 +260,46 @@ pub mod memetik {
 
         Ok(ctx.accounts.pool.clone().into_inner())
     }
+    pub fn get_pool(ctx: Context<GetPool>, ticker: String) -> Result<Pool> {
+        let pool = &ctx.accounts.pool;
+        require!(pool.ticker == ticker, Error::InvalidPoolTicker);
+        Ok(pool.clone().into_inner())
+    }
 }
 
 #[derive(Accounts)]
-#[instruction(pool_id: u64)]
+#[instruction(token_info: TokenArgs)]
 pub struct Initialize<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(
         init,
         payer = signer,
-        seeds = [b"pool", pool_id.to_le_bytes().as_ref()],
+        seeds = [b"pool", token_info.symbol.as_bytes()],
         bump,
         space = 8 + std::mem::size_of::<Pool>()
     )]
     pub pool: Account<'info, Pool>,
+    #[account(
+        init,
+        payer = signer,
+        seeds = [b"pool-escrow", token_info.symbol.as_bytes()],
+        bump,
+        space = 8 + std::mem::size_of::<PoolEscrow>()
+    )]
+    pub escrow: Account<'info, PoolEscrow>,
     /// CHECK: New Metaplex Account being created
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
     #[account(
         init,
-        seeds = [b"mint", pool_id.to_le_bytes().as_ref()],
+        seeds = [b"mint", token_info.symbol.as_bytes()],
         bump,
         payer = signer,
-        mint::decimals = TOKEN_DECIMALS,
+        mint::decimals = DEFAULT_TOKEN_DECIMALS,
         mint::authority = mint,
     )]
     pub mint: Account<'info, Mint>,
-    #[account(
-        init_if_needed,
-        payer = signer,
-        seeds = [b"global-state"],
-        bump,
-        space = 8 + std::mem::size_of::<GlobalState>()
-    )]
-    pub global_state: Account<'info, GlobalState>,
     pub rent: Sysvar<'info, Rent>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
@@ -234,19 +307,40 @@ pub struct Initialize<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(pool_id: u64)]
-pub struct Buy<'info> {
+#[instruction(ticker: String)]
+pub struct Close<'info> {
     #[account(mut)]
-    pub buyer: Signer<'info>,
+    pub creator: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"pool", pool_id.to_le_bytes().as_ref()],
+        seeds = [b"pool", ticker.as_bytes()],
         bump,
     )]
     pub pool: Account<'info, Pool>,
     #[account(
         mut,
-        seeds = [b"mint", pool_id.to_le_bytes().as_ref()],
+        seeds = [b"pool-escrow", ticker.as_bytes()],
+        bump,
+        close = creator
+    )]
+    pub escrow: Account<'info, PoolEscrow>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(ticker: String)]
+pub struct Buy<'info> {
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [b"pool", ticker.as_bytes()],
+        bump,
+    )]
+    pub pool: Account<'info, Pool>,
+    #[account(
+        mut,
+        seeds = [b"mint", ticker.as_bytes()],
         bump,
         mint::authority = mint,
     )]
@@ -258,46 +352,41 @@ pub struct Buy<'info> {
         associated_token::authority = buyer,
     )]
     pub buyer_token_account: Account<'info, TokenAccount>,
-    #[account(
-        mut,
-        seeds = [b"global-state"],
-        bump,
-    )]
-    pub global_state: Account<'info, GlobalState>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 #[derive(Accounts)]
-#[instruction(pool_id: u64)]
+#[instruction(ticker: String)]
 pub struct Sell<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"pool", pool_id.to_le_bytes().as_ref()],
+        seeds = [b"pool", ticker.as_bytes()],
         bump,
     )]
     pub pool: Account<'info, Pool>,
     #[account(
         mut,
-        seeds = [b"mint", pool_id.to_le_bytes().as_ref()],
+        seeds = [b"mint", ticker.as_bytes()],
         bump,
         mint::authority = mint,
     )]
     pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub seller_token_account: Account<'info, TokenAccount>,
-    #[account(
-        mut,
-        seeds = [b"global-state"],
-        bump,
-    )]
-    pub global_state: Account<'info, GlobalState>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
+}
+
+#[derive(Accounts)]
+#[instruction(ticker: String)]
+pub struct GetPool<'info> {
+    #[account(seeds = [b"pool", ticker.as_bytes()], bump)]
+    pub pool: Account<'info, Pool>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
@@ -308,24 +397,43 @@ pub struct TokenArgs {
 }
 
 #[account]
-pub struct GlobalState {
-    pub pools_created: u64,
+pub struct Pool {
+    pub ticker: String,
+    pub tok_price: u64, // Store price in atomic units (lamports)
+    pub mint: Pubkey,
+    pub creator: Pubkey,
+    pub maturity_time: i64,
+    pub has_matured: bool,
+}
+#[account]
+
+pub struct PoolEscrow {
+    pub pool: Pubkey,
+    pub mint: Pubkey,
+    pub owner: Pubkey,
+    pub balance: u64, // in atomic units (lamports)
 }
 
 #[error_code]
 pub enum Error {
-    #[msg("Incorrect mint account provided")]
-    IncorrectMintAccount,
-    #[msg("Incorrect pool id")]
-    IncorrectPoolId,
+    #[msg("Invalid pool ticker")]
+    InvalidPoolTicker,
+    #[msg("Not pool creator")]
+    NotPoolCreator,
+    #[msg("Not escrow owner")]
+    NotEscrowOwner,
+    #[msg("Invalid escrow account")]
+    InvalidEscrowAccount,
+    #[msg("Insufficient funds in escrow")]
+    InsufficientFundsInEscrow,
+    #[msg("Pool has not matured")]
+    PoolNotMatured,
     #[msg("No tokens to sell")]
     NoTokensToSell,
     #[msg("Must buy at least one token")]
     MustBuyAtLeastOneToken,
-    #[msg("Overflow")]
-    Overflow,
     #[msg("Pool has insufficient funds")]
     PoolInsufficientFunds,
-    #[msg("Invalid pool id")]
-    InvalidPoolId,
+    #[msg("Invalid ticker format")]
+    InvalidTickerFormat,
 }
