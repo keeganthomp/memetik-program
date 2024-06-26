@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
-use crate::constants::*;
-use crate::utils::*;
+use crate::bonding_curve::constants::*;
+use crate::bonding_curve::utils::*;
 
 // Quadratic bonding curve constants
 const A: f64 = 1e-13; // Impact: High - Dominates at large supply values, causing exponential increase

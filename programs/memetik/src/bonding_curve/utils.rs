@@ -1,4 +1,4 @@
-use crate::constants::*;
+use crate::bonding_curve::constants::*;
 use anchor_lang::solana_program::sysvar::clock::Clock;
 use anchor_lang::solana_program::sysvar::Sysvar;
 
