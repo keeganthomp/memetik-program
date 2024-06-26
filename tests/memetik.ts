@@ -3,6 +3,8 @@ import { Memetik } from '../target/types/memetik';
 import { assert } from 'chai';
 import { getLogs } from '@solana-developers/helpers';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { createMint } from '@solana/spl-token';
+import { createMintWithTransferFee } from './utils';
 
 type PoolFromProgram = {
   ticker: string;
@@ -11,6 +13,10 @@ type PoolFromProgram = {
   creator: anchor.web3.PublicKey;
   maturityTime: anchor.BN;
 };
+
+const raydiumSwapProgramId = new anchor.web3.PublicKey(
+  'CPMDWBwJDtYax9qW7AyRuVC19Cc4L4Vcy4n2BHAbHkCW'
+);
 
 const getLamports = (amount: number) => {
   return amount * LAMPORTS_PER_SOL;
@@ -22,6 +28,31 @@ const getSol = (lamports: number) => {
 const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey(
   'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s'
 );
+
+const SOL_MINT = new anchor.web3.PublicKey(
+  'So11111111111111111111111111111111111111112'
+);
+
+export function u16ToBytes(num: number) {
+  const arr = new ArrayBuffer(2);
+  const view = new DataView(arr);
+  view.setUint16(0, num, false);
+  return new Uint8Array(arr);
+}
+
+export const AMM_CONFIG_SEED = Buffer.from(
+  anchor.utils.bytes.utf8.encode('amm_config')
+);
+export async function getAmmConfigAddress(
+  index: number,
+  programId: anchor.web3.PublicKey
+): Promise<[anchor.web3.PublicKey, number]> {
+  const [address, bump] = await anchor.web3.PublicKey.findProgramAddress(
+    [AMM_CONFIG_SEED, u16ToBytes(index)],
+    programId
+  );
+  return [address, bump];
+}
 
 // list of tokens to be created
 const tokens = [
@@ -111,6 +142,25 @@ const fundSol = async (
   await provider.connection.confirmTransaction(sig, 'confirmed');
 };
 
+let fakeMint;
+const mintFake = async () => {
+  const owner = anchor.web3.Keypair.generate();
+  const transferFeeConfig: {
+    transferFeeBasisPoints: number;
+    MaxFee: number;
+  } = {
+    transferFeeBasisPoints: 0,
+    MaxFee: 0,
+  };
+  createMintWithTransferFee(
+    provider.connection,
+    owner,
+    owner,
+    anchor.web3.Keypair.generate(),
+    transferFeeConfig
+  );
+};
+
 const getMintPDA = (ticker: string) => {
   const MINT_SEED_CONSTANT = 'mint';
   const seeds = [Buffer.from(MINT_SEED_CONSTANT), Buffer.from(ticker)];
@@ -158,15 +208,23 @@ const buyTokens = async (buyer: any, ticker: string, amount: number) => {
     mint: getMintPDA(ticker),
     owner: buyer.publicKey,
   });
+
   const priceInSol = getSol(poolFromProgram.tokPrice.toNumber());
   console.log(
     `Buyer buying ${amount} tokens for ${priceInSol} SOL per token`
+  );
+  const [ammConfigAddress, _] = await getAmmConfigAddress(
+    0,
+    raydiumSwapProgramId
   );
   const txn = await program.methods
     .buy(ticker, new anchor.BN(amount))
     .accounts({
       buyer: buyer.publicKey,
-      buyerTokenAccount,
+      cpSwapProgram: raydiumSwapProgramId,
+      ammConfig: ammConfigAddress,
+      token1Mint: SOL_MINT,
+      creatorToken1: buyer.publicKey,
     })
     .signers([buyer])
     .rpc();
@@ -207,6 +265,7 @@ describe('memetik', () => {
     for (const user of users) {
       await fundSol(user.publicKey);
     }
+    await mintFake();
   });
 
   it('Can launch token', async () => {
@@ -248,11 +307,13 @@ describe('memetik', () => {
     }
   });
 
-  it("Can fetch pool", async () => {
+  it('Can fetch pool', async () => {
     const pool = createdPools[0];
-    const poolFromProgram = await program.methods.getPool(pool.ticker).view();
+    const poolFromProgram = await program.methods
+      .getPool(pool.ticker)
+      .view();
     assert.ok(poolFromProgram.ticker === pool.ticker);
-  })
+  });
 
   it('Can launch another token', async () => {
     const token = tokens[1];
