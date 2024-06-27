@@ -1,3 +1,2 @@
-pub mod instruction;
-pub mod state;
-pub mod context;
+pub mod config;
+pub mod errors;
