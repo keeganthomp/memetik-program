@@ -142,7 +142,7 @@ const fundSol = async (
 };
 
 const getMintPDA = (ticker: string) => {
-  const MINT_SEED_CONSTANT = 'mint';
+  const MINT_SEED_CONSTANT = 'pool_mint';
   const seeds = [Buffer.from(MINT_SEED_CONSTANT), Buffer.from(ticker)];
   const [mintPDA] = anchor.web3.PublicKey.findProgramAddressSync(
     seeds,
@@ -204,7 +204,6 @@ describe('memetik', () => {
     };
     const mint = getMintPDA(tokenInfo.symbol);
     const metadata = getMetadataPDA(mint);
-    console.log('mint', mint)
     try {
       await program.methods
         .initializePool(tokenInfo.symbol, tokenInfo)
@@ -216,6 +215,21 @@ describe('memetik', () => {
         .rpc();
     } catch (err) {
       console.log('err', err);
+      assert.fail();
+    }
+  });
+
+  it('Can buy on bonding curve', async () => {
+    const buyer = userB;
+    try {
+      await program.methods
+        .buy('TEST', new anchor.BN(1)).accounts({
+          buyer: buyer.publicKey,
+        })
+        .signers([buyer])
+        .rpc();
+    } catch (err) {
+      console.log('err buying', err);
       assert.fail();
     }
   });

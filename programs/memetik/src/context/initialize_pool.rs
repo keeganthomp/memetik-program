@@ -10,11 +10,11 @@ use crate::bonding_curve::constants::DEFAULT_TOKEN_DECIMALS;
 use crate::state::pool::*;
 
 pub const POOL_SEED: &str = "pool";
+pub const POOL_MINT_SEED: &str = "pool_mint";
 pub const POOL_LP_MINT_SEED: &str = "pool_lp_mint";
 pub const POOL_VAULT_SEED: &str = "pool_vault";
-pub const POOL_ESCROW: &str = "pool_escrow";
-pub const MINT: &str = "mint";
-pub const MINT_PDA: &str = "mint_pda";
+pub const POOL_ESCROW_SEED: &str = "pool_escrow";
+pub const POOL_AUTH_SEED: &str = "pool_auth";
 
 #[derive(AnchorSerialize, Debug, Clone)]
 pub struct Empty {}
@@ -32,15 +32,6 @@ pub struct InitializePool<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
-    #[account(
-        init,
-        payer = signer,
-        seeds = [POOL_ESCROW.as_bytes(), symbol.as_bytes()],
-        bump,
-        space = 8 + std::mem::size_of::<PoolEscrow>()
-    )]
-    pub escrow: Account<'info, PoolEscrow>,
-
     /// CHECK: New Metaplex Account being created
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
@@ -48,12 +39,12 @@ pub struct InitializePool<'info> {
     /// CHECK
     #[account(
         init,
-        seeds = [MINT_PDA.as_bytes(), symbol.as_bytes()],
+        seeds = [POOL_AUTH_SEED.as_bytes(), symbol.as_bytes()],
         bump,
         payer = signer,
         space = 0
     )]
-    pub mint_pda: UncheckedAccount<'info>,
+    pub authority: UncheckedAccount<'info>,
 
     /// CHECK
     #[account(
@@ -67,11 +58,11 @@ pub struct InitializePool<'info> {
 
     #[account(
         init,
-        seeds = [MINT.as_bytes(), symbol.as_bytes()],
+        seeds = [POOL_MINT_SEED.as_bytes(), symbol.as_bytes()],
         bump,
         payer = signer,
         mint::decimals = 9,
-        mint::authority = mint_pda,
+        mint::authority = authority,
     )]
     pub mint: Account<'info, Mint>,
 
@@ -80,7 +71,7 @@ pub struct InitializePool<'info> {
         seeds = [POOL_LP_MINT_SEED.as_bytes(), symbol.as_bytes()],
         bump,
         mint::decimals = 9,
-        mint::authority = mint_pda,
+        mint::authority = authority,
         payer = signer,
         token::token_program = token_program,
     )]
@@ -89,7 +80,7 @@ pub struct InitializePool<'info> {
     #[account(
         init,
         associated_token::mint = lp_mint,
-        associated_token::authority = mint_pda,
+        associated_token::authority = authority,
         payer = signer,
         token::token_program = token_program,
     )]
@@ -97,11 +88,13 @@ pub struct InitializePool<'info> {
 
     /// CHECK - fine as we need the vault to hold both SOL and SPL tokens
     #[account(
-        mut,
+        init,
+        payer = signer,
         seeds = [POOL_VAULT_SEED.as_bytes(), symbol.as_bytes()],
         bump,
+        space = 8 + std::mem::size_of::<PoolVault>(),
     )]
-    pub vault: UncheckedAccount<'info>, // Unchecked account to handle both SOL and SPL tokens
+    pub vault: Account<'info, PoolVault>, // Unchecked account to handle both SOL and SPL tokens
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
