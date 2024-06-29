@@ -138,7 +138,7 @@ const fundSol = async (
   solAmt = 80000
 ) => {
   const amtInLamports = solAmt * anchor.web3.LAMPORTS_PER_SOL;
-  const sig = await provider.connection.requestAirdrop( 
+  const sig = await provider.connection.requestAirdrop(
     receiver,
     amtInLamports
   );
