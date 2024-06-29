@@ -1,194 +1,37 @@
 import * as anchor from '@coral-xyz/anchor';
-import { Memetik } from '../target/types/memetik';
 import { assert } from 'chai';
-import { getLogs } from '@solana-developers/helpers';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { createMint } from '@solana/spl-token';
-
-type PoolFromProgram = {
-  ticker: string;
-  tokPrice: anchor.BN;
-  mint: anchor.web3.PublicKey;
-  creator: anchor.web3.PublicKey;
-  maturityTime: anchor.BN;
-};
-
-const raydiumSwapProgramId = new anchor.web3.PublicKey(
-  'CPMDWBwJDtYax9qW7AyRuVC19Cc4L4Vcy4n2BHAbHkCW'
-);
-
-const getTickerString = (ticker: number[]) => {
-  return String.fromCharCode(...ticker.filter((code) => code !== 0));
-};
-
-const getLamports = (amount: number) => {
-  return amount * LAMPORTS_PER_SOL;
-};
-const getSol = (lamports: number) => {
-  return lamports / LAMPORTS_PER_SOL;
-};
-
-const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey(
-  'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s'
-);
-
-const SOL_MINT = new anchor.web3.PublicKey(
-  'So11111111111111111111111111111111111111112'
-);
-
-export function u16ToBytes(num: number) {
-  const arr = new ArrayBuffer(2);
-  const view = new DataView(arr);
-  view.setUint16(0, num, false);
-  return new Uint8Array(arr);
-}
-
-export const AMM_CONFIG_SEED = Buffer.from(
-  anchor.utils.bytes.utf8.encode('amm_config')
-);
-export async function getAmmConfigAddress(
-  index: number,
-  programId: anchor.web3.PublicKey
-): Promise<[anchor.web3.PublicKey, number]> {
-  const [address, bump] = await anchor.web3.PublicKey.findProgramAddress(
-    [AMM_CONFIG_SEED, u16ToBytes(index)],
-    programId
-  );
-  return [address, bump];
-}
-
-// list of tokens to be created
-const tokens = [
-  {
-    name: 'wee',
-    symbol: 'WEE',
-    uri: 'https://wee.com',
-  },
-  {
-    name: 'balls',
-    symbol: 'WOO',
-    uri: '',
-  },
-];
+import {
+  fundSol,
+  getMintPDA,
+  getMetadataPDA,
+  getPoolPDA,
+  getTickerString,
+  getSOLBalance,
+  getSPLBalance,
+} from './utils';
+import { Memetik } from '../target/types/memetik';
 
 // Configure the client to use the local cluster.
 anchor.setProvider(anchor.AnchorProvider.env());
 const program = anchor.workspace.Memetik as anchor.Program<Memetik>;
 
-const provider = anchor.getProvider();
-
-const getSPLBalance = async (tokenAccount) => {
-  try {
-    const info = await provider.connection.getTokenAccountBalance(
-      tokenAccount
-    );
-    if (info.value.uiAmount == null) return 0;
-    return info.value.uiAmount * LAMPORTS_PER_SOL;
-  } catch (err) {
-    return 0;
-  }
-};
-
-const sleep = (ms: number) => {
-  console.log(`Waiting for ${ms / 1000} seconds...`);
-  return new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-const getSOLBalance = async (account: anchor.web3.PublicKey) => {
-  const balance = await provider.connection.getBalance(account);
-  return balance;
-};
-
-const logTxnInfo = async (txn: anchor.web3.TransactionSignature) => {
-  await waitForTxnConfrimation(txn);
-  const logs = await getLogs(provider.connection, txn);
-  console.log('Transaction logs:', logs);
-};
-
-const waitUntilTime = async (targetTimestamp) => {
-  const BUFFER = 11000;
-  const currentTime = Date.now();
-  const delay = targetTimestamp + BUFFER - currentTime;
-  console.log('Waiting....');
-  console.log('current time:', currentTime);
-  console.log('target time:', targetTimestamp);
-  if (delay <= 0) {
-    // If the target time is in the past or immediate future, resolve immediately
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    setTimeout(resolve, delay);
-  });
-};
-
-const waitForTxnConfrimation = async (
-  tx: anchor.web3.TransactionSignature
-) => {
-  console.log('Waiting for transaction to be confirmed...');
-  const confirmedTxn = await provider.connection.getTransaction(tx, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  });
-  console.log('Transaction confirmed!');
-  return confirmedTxn;
-};
-
-const fundSol = async (
-  receiver: anchor.web3.PublicKey,
-  solAmt = 80000
-) => {
-  const amtInLamports = solAmt * anchor.web3.LAMPORTS_PER_SOL;
-  const sig = await provider.connection.requestAirdrop(
-    receiver,
-    amtInLamports
-  );
-  await provider.connection.confirmTransaction(sig, 'confirmed');
-};
-
-const getMintPDA = (ticker: string) => {
-  const MINT_SEED_CONSTANT = 'pool_mint';
-  const seeds = [Buffer.from(MINT_SEED_CONSTANT), Buffer.from(ticker)];
-  const [mintPDA] = anchor.web3.PublicKey.findProgramAddressSync(
-    seeds,
-    program.programId
-  );
-  return mintPDA;
-};
-const getMetadataPDA = (mint: anchor.web3.PublicKey) => {
-  const METADATA_SEED_CONSTANT = 'metadata';
-  const [metadataAddress] = anchor.web3.PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(METADATA_SEED_CONSTANT),
-      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(),
-    ],
-    TOKEN_METADATA_PROGRAM_ID
-  );
-  return metadataAddress;
-};
-const getPoolPDA = (ticker: string) => {
-  const POOL_SEED_CONSTANT = 'pool';
-  const seeds = [Buffer.from(POOL_SEED_CONSTANT), Buffer.from(ticker)];
-  const [poolPDA] = anchor.web3.PublicKey.findProgramAddressSync(
-    seeds,
-    program.programId
-  );
-  return poolPDA;
-};
-const getEscrowPDA = (ticker: string) => {
-  const ESCROW_SEED_CONSTANT = 'pool_escrow';
-  const seeds = [Buffer.from(ESCROW_SEED_CONSTANT), Buffer.from(ticker)];
-  const [escrowPDA] = anchor.web3.PublicKey.findProgramAddressSync(
-    seeds,
-    program.programId
-  );
-  return escrowPDA;
-};
-
 const userA = anchor.web3.Keypair.generate();
 const userB = anchor.web3.Keypair.generate();
 const userC = anchor.web3.Keypair.generate();
 const users = [userA, userB, userC];
+
+const tokens = [
+  {
+    symbol: 'MEME',
+    name: 'MEME',
+    uri: 'https://arweave.net/123',
+  },
+  {
+    symbol: 'MEME2',
+    name: 'MEME2',
+    uri: 'https://arweave.net/123',
+  },
+];
 
 describe('memetik', () => {
   const createdPools: any[] = [];

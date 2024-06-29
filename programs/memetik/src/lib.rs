@@ -35,6 +35,13 @@ pub mod memetik {
         name: String,
         uri: String,
     ) -> Result<()> {
+        // check ticker value
+        require!(
+            symbol.chars().all(char::is_alphanumeric),
+            Error::InvalidTicker
+        );
+        let formatted_symbol = symbol.to_uppercase();
+
         let seeds = &[
             POOL_AUTH_SEED.as_bytes(),
             &symbol.as_bytes(),
@@ -44,7 +51,7 @@ pub mod memetik {
 
         let token_data: DataV2 = DataV2 {
             name: name.clone(),
-            symbol: symbol.clone(),
+            symbol: formatted_symbol.clone(),
             uri: uri.clone(),
             seller_fee_basis_points: 0,
             creators: None,
@@ -112,7 +119,7 @@ pub mod memetik {
         let mut pool = ctx.accounts.pool.load_init()?;
         pool.initialize(
             &ctx.accounts.signer.key(),
-            &symbol,
+            &formatted_symbol,
             &ctx.accounts.mint.key(),
             &ctx.accounts.vault.key(),
             &ctx.accounts.escrow.key(),
@@ -189,7 +196,7 @@ pub mod memetik {
         Ok(())
     }
 
-    pub fn sell(ctx: Context<SellTokens>, ticker: String, amount: u64) -> Result<()> {
+    pub fn sell(ctx: Context<SellTokens>, _ticker: String, amount: u64) -> Result<()> {
         require!(amount > 0, Error::NoTokensToSell);
         require!(
             ctx.accounts.seller_token_account.amount >= amount,
@@ -237,7 +244,7 @@ pub mod memetik {
         Ok(())
     }
 
-    pub fn close(ctx: Context<ClosePool>, symbol: String) -> Result<()> {
+    pub fn close(ctx: Context<ClosePool>, _symbol: String) -> Result<()> {
         let pool = &mut ctx.accounts.pool.load_mut()?;
 
         require!(
