@@ -2,46 +2,85 @@ use anchor_lang::prelude::*;
 use crate::bonding_curve::constants::*;
 use crate::bonding_curve::utils::*;
 
-// Quadratic bonding curve constants
-const A: f64 = 1e-13; // Impact: High - Dominates at large supply values, causing exponential increase
-const B: f64 = 1e-10; // Impact: Moderate - Influences both initial and ongoing price increases
-const C: f64 = MIN_TOK_PRICE; // Impact: Low - Sets the minimum price and initial price floor
+// Linear bonding curve constants
+const M: f64 = 1e-9; // Slope of the linear curve in atomic units
 
-fn price_function(n: f64) -> f64 {
-    A * n.powf(2.0) + B * n + C
+fn price_function_linear(n: u64) -> f64 {
+    M * n as f64
 }
-fn integral_function(n: f64) -> f64 {
-    (A / 3.0) * n.powf(3.0) + (B / 2.0) * n.powf(2.0) + C * n
+
+fn integral_function_linear(n: u64) -> f64 {
+    (M / 2.0) * (n as f64).powf(2.0)
 }
 
 pub fn calculate_price(current_supply: u64, amount: u64, is_selling: bool) -> (u64, u64) {
     msg!("========Calculating price========");
-    // Convert atomic units to whole units
-    let current_supply_units = to_whole_units(current_supply);
-    let amount_units = to_whole_units(amount);
-    let new_supply_units = if is_selling {
-        current_supply_units - amount_units
+
+    // Check for valid operation
+    if is_selling && amount > current_supply {
+        panic!("Attempt to sell more tokens than available in supply");
+    }
+
+    let new_supply = if is_selling {
+        current_supply.saturating_sub(amount) // Ensure we don't go negative
     } else {
-        current_supply_units + amount_units
+        current_supply.saturating_add(amount)
     };
 
+    // Calculate total cost based on the integral of the linear price function
     let total_cost_f64 = if is_selling {
-        integral_function(current_supply_units) - integral_function(new_supply_units)
+        integral_function_linear(current_supply) - integral_function_linear(new_supply)
     } else {
-        integral_function(new_supply_units) - integral_function(current_supply_units)
+        integral_function_linear(new_supply) - integral_function_linear(current_supply)
     };
 
-    let total_cost_lamports = to_atomic_units(total_cost_f64);
+    // Round the total cost to nearest atomic unit
+    let total_cost = total_cost_f64.round() as u64;
 
-    // Calculate price per whole unit correctly
-    let price_per_unit_f64 = price_function(new_supply_units);
-    let price_per_unit = to_atomic_units(price_per_unit_f64);
+    // Calculate the new price per unit
+    let price_per_unit_f64 = price_function_linear(new_supply);
+    let price_per_unit = price_per_unit_f64.round() as u64;
 
-    msg!("Old supply (units): {}", current_supply_units);
-    msg!("Amount (units): {}", amount_units);
-    msg!("New supply (units): {}", new_supply_units);
-    msg!("Total cost: {}", total_cost_lamports);
-    msg!("Price per whole unit: {}", price_per_unit);
+    msg!("Old supply: {}", current_supply);
+    msg!("Amount: {}", amount);
+    msg!("New supply: {}", new_supply);
+    msg!("Total cost: {}", total_cost);
+    msg!("Price per unit: {}", price_per_unit);
 
-    (total_cost_lamports, price_per_unit)
+    (total_cost, price_per_unit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_buy_and_sell() {
+        let initial_supply: u64 = 1000;
+        let amount: u64 = 100;
+        let (buy_cost, _) = calculate_price(initial_supply, amount, false);
+        let (sell_revenue, _) = calculate_price(initial_supply + amount, amount, true);
+
+        assert_eq!(buy_cost, sell_revenue);
+    }
+
+    #[test]
+    fn test_linear_increase() {
+        let initial_supply: u64 = 1000;
+        let amount: u64 = 100;
+        let (_, price_before) = calculate_price(initial_supply, 0, false);
+        let (_, price_after) = calculate_price(initial_supply, amount, false);
+
+        assert!(price_after > price_before);
+    }
+
+    #[test]
+    fn test_linear_decrease() {
+        let initial_supply: u64 = 1000;
+        let amount: u64 = 100;
+        let (_, price_before) = calculate_price(initial_supply, 0, false);
+        let (_, price_after) = calculate_price(initial_supply, amount, true);
+
+        assert!(price_after < price_before);
+    }
 }

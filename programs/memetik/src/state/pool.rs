@@ -17,6 +17,7 @@ pub enum PoolStatus {
 #[derive(Default, Debug)]
 pub struct Pool {
     pub vault: Pubkey,
+    pub escrow: Pubkey,
     pub creator: Pubkey,
     pub status: u8,
     // bonding pool
@@ -36,6 +37,13 @@ pub struct Pool {
 
 #[account]
 
+pub struct PoolEscrow {
+    pub depositor: Pubkey,
+    pub balance: u64, // in atomic units (lamports)
+}
+
+#[account]
+
 pub struct PoolVault {
     pub creator: Pubkey,
     pub pool: Pubkey,
@@ -51,17 +59,20 @@ impl Pool {
         ticker: &str,
         mint: &Pubkey,
         vault: &Pubkey,
+        escrow: &Pubkey,
         lp_mint: &Pubkey,
     ) {
         //////////////////////////////////////////////
         // The pool will intialize as a bonding pool
         //////////////////////////////////////////////
         self.vault = vault.key();
+        self.escrow = escrow.key();
         // bonding pool
         self.creator = creator.key();
         self.status = PoolStatus::Active as u8;
         self.mint = mint.key();
         self.mint_decimals = DEFAULT_TOKEN_DECIMALS;
+        self.mint_supply = 0;
         self.ticker = string_to_fixed_bytes(ticker, 32);
         self.bonding_curve_price = MIN_TOK_PRICE as u64;
         self.maturity_time = calculate_test_time();

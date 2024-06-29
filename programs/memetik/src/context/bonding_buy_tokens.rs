@@ -35,7 +35,7 @@ pub struct BuyTokens<'info> {
         seeds = [POOL_VAULT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
     )]
-    pub vault: Account<'info, PoolVault>, // Unchecked account to handle both SOL and SPL tokens
+    pub vault: Account<'info, PoolVault>,
 
     #[account(
         mut,

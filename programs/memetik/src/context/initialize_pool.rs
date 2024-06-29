@@ -12,8 +12,8 @@ use crate::state::pool::*;
 pub const POOL_SEED: &str = "pool";
 pub const POOL_MINT_SEED: &str = "pool_mint";
 pub const POOL_LP_MINT_SEED: &str = "pool_lp_mint";
-pub const POOL_VAULT_SEED: &str = "pool_vault";
 pub const POOL_ESCROW_SEED: &str = "pool_escrow";
+pub const POOL_VAULT_SEED: &str = "pool_vault";
 pub const POOL_AUTH_SEED: &str = "pool_auth";
 
 #[derive(AnchorSerialize, Debug, Clone)]
@@ -27,7 +27,7 @@ pub struct TokenArgs {
 }
 
 #[derive(Accounts)]
-#[instruction(symbol:String, token_info: TokenArgs)]
+#[instruction(symbol:String, name:String, uri:String)]
 pub struct InitializePool<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -55,6 +55,16 @@ pub struct InitializePool<'info> {
         space = 8 + std::mem::size_of::<Pool>(),
     )]
     pub pool: AccountLoader<'info, Pool>,
+
+    /// CHECK - fine as we need the vault to hold both SOL and SPL tokens
+    #[account(
+        init,
+        payer = signer,
+        seeds = [POOL_VAULT_SEED.as_bytes(), symbol.as_bytes()],
+        bump,
+        space = 8 + std::mem::size_of::<PoolVault>(),
+    )]
+    pub vault: Account<'info, PoolVault>,
 
     #[account(
         init,
@@ -90,11 +100,11 @@ pub struct InitializePool<'info> {
     #[account(
         init,
         payer = signer,
-        seeds = [POOL_VAULT_SEED.as_bytes(), symbol.as_bytes()],
+        seeds = [POOL_ESCROW_SEED.as_bytes(), symbol.as_bytes()],
         bump,
-        space = 8 + std::mem::size_of::<PoolVault>(),
+        space = 8 + std::mem::size_of::<PoolEscrow>(),
     )]
-    pub vault: Account<'info, PoolVault>, // Unchecked account to handle both SOL and SPL tokens
+    pub escrow: Account<'info, PoolEscrow>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
