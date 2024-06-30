@@ -244,4 +244,30 @@ describe('memetik', () => {
       assert.fail();
     }
   });
+
+  it('Can remove liquidity', async () => {
+    const liquidityProvider = userB;
+    const pool = createdPools[0];
+    const LIQ_AMOUNT = 100;
+    try {
+      const lpSolBalBefore = await getSOLBalance(
+        liquidityProvider.publicKey
+      );
+      const txn = await program.methods
+        .removeLiquidity(pool.ticker, new anchor.BN(LIQ_AMOUNT))
+        .accounts({
+          user: liquidityProvider.publicKey,
+        })
+        .signers([liquidityProvider])
+        .rpc();
+      await logTxnInfo(txn);
+      const lpSolBalAfter = await getSOLBalance(
+        liquidityProvider.publicKey
+      );
+      assert.ok(lpSolBalAfter > lpSolBalBefore);
+    } catch (err) {
+      console.log('err removing liquidity', err);
+      assert.fail();
+    }
+  });
 });

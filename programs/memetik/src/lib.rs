@@ -19,8 +19,8 @@ pub mod utils;
 
 pub use bonding_curve::{constants::REQUIRED_ESCROW_AMOUNT, price::*, utils::*};
 pub use context::{
-    amm_add_liquidity::*, amm_swap_tokens::*, bonding_buy_tokens::*, bonding_sell_tokens::*,
-    close_pool::*, initialize_pool::*,
+    amm_add_liquidity::*, amm_remove_liquidity::*, amm_swap_tokens::*, bonding_buy_tokens::*,
+    bonding_sell_tokens::*, close_pool::*, initialize_pool::*,
 };
 pub use errors::Error;
 pub use state::pool::*;
@@ -311,6 +311,80 @@ pub mod memetik {
         msg!("Pool state updated successfully");
         msg!("Pool sol balance: {}", amm_pool.sol_balance);
         msg!("Pool token balance: {}", amm_pool.token_balance);
+
+        Ok(())
+    }
+
+    pub fn remove_liquidity(
+        ctx: Context<RemoveLiquidity>,
+        ticker: String,
+        lp_token_amount: u64,
+    ) -> Result<()> {
+        let amm_pool = &mut ctx.accounts.amm_pool;
+        let user = &ctx.accounts.user;
+        let user_lp_token_account = &ctx.accounts.user_lp_token_account;
+        let sol_vault = &ctx.accounts.sol_vault;
+        let token_vault = &ctx.accounts.token_vault;
+        let token_program = &ctx.accounts.token_program;
+        let system_program = &ctx.accounts.system_program;
+
+        // Calculate the proportion of the pool to remove
+        let lp_supply = ctx.accounts.lp_mint.supply;
+        let token_balance = amm_pool.token_balance as u128;
+        let sol_balance = amm_pool.sol_balance as u128;
+        let lp_token_amount = lp_token_amount as u128;
+
+        let sol_amount_out = (sol_balance * lp_token_amount) / lp_supply as u128;
+        let token_amount_out = (token_balance * lp_token_amount) / lp_supply as u128;
+
+        // Burn LP tokens from the user
+        token::burn(
+            CpiContext::new(
+                token_program.to_account_info(),
+                token::Burn {
+                    mint: ctx.accounts.lp_mint.to_account_info(),
+                    from: user_lp_token_account.to_account_info(),
+                    authority: user.to_account_info(),
+                },
+            ),
+            lp_token_amount as u64,
+        )?;
+
+        msg!("LP tokens burned successfully");
+
+        // Transfer SOL from pool to user
+        **sol_vault.try_borrow_mut_lamports()? -= sol_amount_out as u64;
+        **user.try_borrow_mut_lamports()? += sol_amount_out as u64;
+
+        msg!("SOL transferred to user successfully");
+
+        // Transfer tokens from pool to user
+        token::transfer(
+            CpiContext::new_with_signer(
+                token_program.to_account_info(),
+                token::Transfer {
+                    from: token_vault.to_account_info(),
+                    to: ctx.accounts.user_token_account.to_account_info(),
+                    authority: amm_pool.to_account_info(),
+                },
+                &[&[
+                    POOL_AMM_SEED.as_bytes(),
+                    ticker.as_bytes(),
+                    &[ctx.bumps.amm_pool],
+                ]],
+            ),
+            token_amount_out as u64,
+        )?;
+
+        msg!("Tokens transferred to user successfully");
+
+        // Update pool reserves
+        amm_pool.sol_balance -= sol_amount_out as u64;
+        amm_pool.token_balance -= token_amount_out as u64;
+
+        msg!("Liquidity removed successfully");
+        msg!("New SOL reserve: {}", amm_pool.sol_balance);
+        msg!("New token reserve: {}", amm_pool.token_balance);
 
         Ok(())
     }

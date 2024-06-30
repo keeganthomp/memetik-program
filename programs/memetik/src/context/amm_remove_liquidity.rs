@@ -16,39 +16,26 @@ use crate::state::pool::{AMMPool, PoolSolVault};
 
 #[derive(Accounts)]
 #[instruction(ticker: String)]
-pub struct AddLiquidity<'info> {
+pub struct RemoveLiquidity<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
     #[account(
-        init_if_needed,
+        mut,
         seeds = [POOL_LP_MINT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        mint::decimals = 9,
-        mint::authority = amm_pool,
-        payer = user,
     )]
     pub lp_mint: Account<'info, Mint>,
 
     #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         associated_token::mint = lp_mint,
         associated_token::authority = user,
     )]
     pub user_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
-        init_if_needed,
-        payer = user,
-        associated_token::mint = lp_mint,
-        associated_token::authority = amm_pool,
-    )]
-    pub lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         associated_token::mint = token_mint,
         associated_token::authority = user,
     )]
@@ -58,29 +45,26 @@ pub struct AddLiquidity<'info> {
         mut,
         seeds = [POOL_MINT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        mint::authority = token_mint,
     )]
     pub token_mint: Account<'info, Mint>,
 
     #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         seeds = [POOL_AMM_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        space = 8 + std::mem::size_of::<AMMPool>(),
     )]
     pub amm_pool: Account<'info, AMMPool>,
 
+    /// CHECK
     #[account(
         mut,
         seeds = [POOL_SOL_VAULT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
     )]
-    pub sol_vault: Account<'info, PoolSolVault>,
+    pub sol_vault: AccountInfo<'info>,
 
     #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         associated_token::mint = token_mint,
         associated_token::authority = amm_pool,
     )]
