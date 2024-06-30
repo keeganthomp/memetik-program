@@ -26,7 +26,7 @@ pub struct AddLiquidity<'info> {
         seeds = [POOL_LP_MINT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
         mint::decimals = 9,
-        mint::authority = pool,
+        mint::authority = amm_pool,
         payer = user,
     )]
     pub lp_mint: Account<'info, Mint>,
@@ -43,7 +43,7 @@ pub struct AddLiquidity<'info> {
         init_if_needed,
         payer = user,
         associated_token::mint = lp_mint,
-        associated_token::authority = pool,
+        associated_token::authority = amm_pool,
     )]
     pub lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
@@ -70,7 +70,7 @@ pub struct AddLiquidity<'info> {
         bump,
         space = 8 + std::mem::size_of::<AMMPool>(),
     )]
-    pub pool: Account<'info, AMMPool>,
+    pub amm_pool: Account<'info, AMMPool>,
 
     #[account(
         init_if_needed,
@@ -85,7 +85,7 @@ pub struct AddLiquidity<'info> {
         init_if_needed,
         payer = user,
         associated_token::mint = token_mint,
-        associated_token::authority = pool,
+        associated_token::authority = amm_pool,
     )]
     pub token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 

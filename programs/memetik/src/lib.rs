@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::invoke;
+use anchor_lang::solana_program::program::{invoke, invoke_signed};
 use anchor_lang::solana_program::system_instruction;
 use anchor_spl::{
     metadata::{
@@ -24,6 +24,7 @@ pub use context::{
 };
 pub use errors::Error;
 pub use state::pool::*;
+pub use utils::amm_swap::calculate_swap;
 
 declare_id!("14a3y3QApSRvxd8kgG9S4FTjQFeTQ92XpUxTvXkTrknR");
 
@@ -222,128 +223,13 @@ pub mod memetik {
         Ok(())
     }
 
-    pub fn swap(
-        ctx: Context<Swap>,
-        ticker: String,
-        amount_in: u64,
-        is_sol_to_token: bool,
-    ) -> Result<()> {
-        let pool = &mut ctx.accounts.pool;
-        let user = &ctx.accounts.user;
-        let user_token_account = &ctx.accounts.user_token_account;
-        let pool_token_mint = &ctx.accounts.token_mint;
-        let lp_mint = &ctx.accounts.lp_mint;
-        let sol_vault = &ctx.accounts.sol_vault;
-        let token_program = &ctx.accounts.token_program;
-        let system_program = &ctx.accounts.system_program;
-
-        let mint_supply = pool_token_mint.supply;
-        let lp_supply = lp_mint.supply;
-
-        // Ensure there is sufficient liquidity in the pool
-        let liquidity_available = if is_sol_to_token {
-            mint_supply
-        } else {
-            lp_supply
-        };
-
-        require!(
-            liquidity_available >= amount_in,
-            Error::InsufficientLiquidity
-        );
-
-        // Calculate the amount to swap using the constant product formula (x * y = k)
-        let (amount_out, new_sol_reserve, new_token_reserve) = if is_sol_to_token {
-            // Swapping SOL for tokens
-            let amount_in_with_fee = amount_in * 997 / 1000; // 0.3% fee
-            let amount_out = (amount_in_with_fee * mint_supply) / (lp_supply + amount_in_with_fee);
-            let new_sol_reserve = lp_supply + amount_in;
-            let new_token_reserve = mint_supply - amount_out;
-            (amount_out, new_sol_reserve, new_token_reserve)
-        } else {
-            // Swapping tokens for SOL
-            let amount_in_with_fee = amount_in * 997 / 1000; // 0.3% fee
-            let amount_out = (amount_in_with_fee * lp_supply) / (mint_supply + amount_in_with_fee);
-            let new_sol_reserve = lp_supply - amount_out;
-            let new_token_reserve = mint_supply + amount_in;
-            (amount_out, new_sol_reserve, new_token_reserve)
-        };
-
-        // Perform the swap
-        // let auth_seeds = &[
-        //     POOL_AUTH_SEED.as_bytes(),
-        //     ticker.as_bytes(),
-        //     &[ctx.bumps.authority],
-        // ];
-        // let signer = [&auth_seeds[..]];
-
-        if is_sol_to_token {
-            // Transfer SOL from user to pool SOL vault
-            invoke(
-                &system_instruction::transfer(&user.key(), &sol_vault.key(), amount_in),
-                &[
-                    user.to_account_info(),
-                    sol_vault.to_account_info(),
-                    system_program.to_account_info(),
-                ],
-            )?;
-
-            // Transfer tokens from pool to user
-            // token::transfer(
-            //     CpiContext::new_with_signer(
-            //         token_program.to_account_info(),
-            //         Transfer {
-            //             from: sol_vault.to_account_info(),
-            //             to: user_token_account.to_account_info(),
-            //             authority: pool_authority.to_account_info(),
-            //         },
-            //         &signer,
-            //     ),
-            //     amount_out,
-            // )?;
-        } else {
-            // Transfer tokens from user to pool token vault
-            token::transfer(
-                CpiContext::new(
-                    token_program.to_account_info(),
-                    Transfer {
-                        from: user_token_account.to_account_info(),
-                        to: ctx.accounts.token_vault.to_account_info(),
-                        authority: user.to_account_info(),
-                    },
-                ),
-                amount_in,
-            )?;
-
-            // Transfer SOL from pool vault to user
-            invoke(
-                &system_instruction::transfer(
-                    &ctx.accounts.sol_vault.key(),
-                    &user.key(),
-                    amount_out,
-                ),
-                &[
-                    ctx.accounts.sol_vault.to_account_info(),
-                    user.to_account_info(),
-                    system_program.to_account_info(),
-                ],
-            )?;
-        }
-
-        // Update pool reserves
-        pool.sol_balance = new_sol_reserve;
-        pool.token_balance = new_token_reserve;
-
-        Ok(())
-    }
-
     pub fn add_liquidity(
         ctx: Context<AddLiquidity>,
         ticker: String,
         sol_amount: u64,
         token_amount: u64,
     ) -> Result<()> {
-        let pool = &mut ctx.accounts.pool;
+        let amm_pool = &mut ctx.accounts.amm_pool;
         let user = &ctx.accounts.user;
         let user_token_account = &ctx.accounts.user_token_account;
         let user_lp_token_account = &ctx.accounts.user_lp_token_account;
@@ -382,15 +268,16 @@ pub mod memetik {
         msg!("Tokens transferred to pool vault successfully");
 
         // Calculate the amount of LP tokens to mint
-        let lp_supply = pool_lp_mint.supply;
-        let mint_supply = pool.token_balance;
-        let lp_amount = if lp_supply == 0 {
+        let sol_balance = amm_pool.sol_balance;
+        let token_balance = amm_pool.token_balance;
+
+        let lp_amount = if sol_balance == 0 {
             // Initial liquidity, 1:1 ratio
             sol_amount
         } else {
             // Mint LP tokens proportional to the liquidity added
-            let lp_sol_ratio = (sol_amount * lp_supply) / lp_supply;
-            let lp_token_ratio = (token_amount * lp_supply) / mint_supply;
+            let lp_sol_ratio = (sol_amount * sol_balance) / sol_balance;
+            let lp_token_ratio = (token_amount * sol_balance) / token_balance;
             std::cmp::min(lp_sol_ratio, lp_token_ratio)
         };
 
@@ -398,7 +285,7 @@ pub mod memetik {
         let auth_seeds = &[
             POOL_AMM_SEED.as_bytes(),
             ticker.as_bytes(),
-            &[ctx.bumps.pool],
+            &[ctx.bumps.amm_pool],
         ];
         let signer = [&auth_seeds[..]];
 
@@ -408,7 +295,7 @@ pub mod memetik {
                 MintTo {
                     mint: pool_lp_mint.to_account_info(),
                     to: user_lp_token_account.to_account_info(),
-                    authority: pool.to_account_info(),
+                    authority: amm_pool.to_account_info(),
                 },
                 &signer,
             ),
@@ -417,9 +304,118 @@ pub mod memetik {
 
         msg!("LP tokens minted to user successfully");
 
+        // Update pool state
+        amm_pool.sol_balance += sol_amount;
+        amm_pool.token_balance += token_amount;
+
+        msg!("Pool state updated successfully");
+        msg!("Pool sol balance: {}", amm_pool.sol_balance);
+        msg!("Pool token balance: {}", amm_pool.token_balance);
+
+        Ok(())
+    }
+
+    pub fn swap(
+        ctx: Context<Swap>,
+        ticker: String,
+        amount_in: u64,
+        is_sol_to_token: bool,
+    ) -> Result<()> {
+        const SWAP_FEE_PERCENTAGE: u64 = 3;
+
+        let amm_pool = &mut ctx.accounts.amm_pool;
+        let user = &ctx.accounts.user;
+        let user_token_account = &ctx.accounts.user_token_account;
+        let sol_vault = &ctx.accounts.sol_vault;
+        let token_vault = &ctx.accounts.token_vault;
+        let token_program = &ctx.accounts.token_program;
+        let system_program = &ctx.accounts.system_program;
+
+        let current_token_balance = amm_pool.token_balance as u128;
+        let current_sol_balance = amm_pool.sol_balance as u128;
+
+        let amount_in = amount_in as u128;
+        let (amount_out, new_sol_reserve, new_token_reserve) = calculate_swap(
+            amount_in,
+            current_sol_balance,
+            current_token_balance,
+            is_sol_to_token,
+        );
+
+        // Ensure there is sufficient liquidity in the pool
+        require!(
+            (is_sol_to_token && current_token_balance >= amount_out)
+                || (!is_sol_to_token && current_sol_balance >= amount_out),
+            Error::InsufficientLiquidity
+        );
+
+        // Perform the swap
+        if is_sol_to_token {
+            msg!("Swapping SOL for tokens");
+            let auth_seeds = &[
+                POOL_AMM_SEED.as_bytes(),
+                ticker.as_bytes(),
+                &[ctx.bumps.amm_pool],
+            ];
+            let signer = [&auth_seeds[..]];
+            // Transfer SOL from user to pool SOL vault
+            invoke(
+                &system_instruction::transfer(&user.key(), &sol_vault.key(), amount_in as u64),
+                &[
+                    user.to_account_info(),
+                    sol_vault.to_account_info(),
+                    system_program.to_account_info(),
+                ],
+            )?;
+
+            // Transfer tokens from pool to user
+            token::transfer(
+                CpiContext::new_with_signer(
+                    token_program.to_account_info(),
+                    Transfer {
+                        from: token_vault.to_account_info(),
+                        to: user_token_account.to_account_info(),
+                        authority: amm_pool.to_account_info(),
+                    },
+                    &signer,
+                ),
+                amount_out as u64,
+            )?;
+        } else {
+            msg!("Swapping tokens for SOL");
+            let auth_seeds = &[
+                POOL_SOL_VAULT_SEED.as_bytes(),
+                ticker.as_bytes(),
+                &[ctx.bumps.sol_vault],
+            ];
+            let signer = [&auth_seeds[..]];
+            // Transfer tokens from user to pool token vault
+            token::transfer(
+                CpiContext::new(
+                    token_program.to_account_info(),
+                    Transfer {
+                        from: user_token_account.to_account_info(),
+                        to: token_vault.to_account_info(),
+                        authority: user.to_account_info(),
+                    },
+                ),
+                amount_in as u64,
+            )?;
+
+            msg!("Tokens transferred to pool vault successfully");
+
+            // Transfer SOL from pool vault to user
+            **sol_vault.try_borrow_mut_lamports()? -= amount_out as u64;
+            **user.try_borrow_mut_lamports()? += amount_out as u64;
+        }
+
         // Update pool reserves
-        // pool.sol_balance += sol_amount;
-        // pool.token_balance += token_amount;
+        amm_pool.sol_balance = new_sol_reserve as u64;
+        amm_pool.token_balance = new_token_reserve as u64;
+
+        msg!("Swap successful");
+        msg!("New SOL reserve: {}", amm_pool.sol_balance);
+        msg!("New token reserve: {}", amm_pool.token_balance);
 
         Ok(())
     }

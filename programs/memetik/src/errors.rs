@@ -14,4 +14,10 @@ pub enum Error {
     Unauthorized,
     #[msg("Insufficient liquidity")]
     InsufficientLiquidity,
+    #[msg("Division by zero")]
+    DivideByZero,
+    #[msg("Overflow")]
+    Overflow,
+    #[msg("Invalid swap input")]
+    InvalidSwapInput,
 }

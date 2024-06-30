@@ -7,9 +7,10 @@ use anchor_spl::{
 };
 
 use crate::context::initialize_pool::{
-    POOL_AUTH_SEED, POOL_BONDING_SEED, POOL_LP_MINT_SEED, POOL_MINT_SEED, POOL_SOL_VAULT_SEED,
+    POOL_AMM_SEED, POOL_AUTH_SEED, POOL_BONDING_SEED, POOL_LP_MINT_SEED, POOL_MINT_SEED,
+    POOL_SOL_VAULT_SEED, POOL_TOKEN_VAULT_SEED,
 };
-use crate::state::pool::{AMMPool, PoolSolVault};
+use crate::state::pool::{AMMPool, BondingPool, PoolSolVault};
 
 #[derive(Accounts)]
 #[instruction(ticker: String)]
@@ -29,41 +30,40 @@ pub struct Swap<'info> {
         mut,
         seeds = [POOL_MINT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        mint::authority = token_mint,
     )]
     pub token_mint: Account<'info, Mint>,
 
+    /// CHECK
     #[account(
-        init_if_needed,
+        mut,
         seeds = [POOL_SOL_VAULT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        payer = user,
-        space = 8 + std::mem::size_of::<PoolSolVault>(),
     )]
-    pub sol_vault: Account<'info, PoolSolVault>,
+    pub sol_vault: AccountInfo<'info>,
 
     #[account(
         init_if_needed,
         payer = user,
+        seeds = [POOL_AMM_SEED.as_bytes(), ticker.as_bytes()],
+        bump,
+        space = 8 + std::mem::size_of::<AMMPool>(),
+    )]
+    pub amm_pool: Account<'info, AMMPool>,
+
+    #[account(
+        init_if_needed,
+        payer = bonding_pool,
         associated_token::mint = token_mint,
-        associated_token::authority = token_vault,
+        associated_token::authority = amm_pool,
     )]
     pub token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(
-        init_if_needed,
-        payer = user,
-        associated_token::mint = token_mint,
-        associated_token::authority = user_lp_token_account,
-    )]
-    pub user_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         seeds = [POOL_BONDING_SEED.as_bytes(), ticker.as_bytes()],
         bump,
     )]
-    pub pool: Account<'info, AMMPool>,
+    pub bonding_pool: Account<'info, BondingPool>,
 
     #[account(
         init_if_needed,
@@ -71,17 +71,25 @@ pub struct Swap<'info> {
         seeds = [POOL_LP_MINT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
         mint::decimals = 9,
-        mint::authority = lp_mint,
-        mint::freeze_authority = lp_mint,
-    )]
+        mint::authority = amm_pool,
+        )]
     pub lp_mint: Account<'info, Mint>,
 
-    // #[account(
-    //     mut,
-    //     associated_token::mint = lp_mint,
-    //     associated_token::authority = authority,
-    // )]
-    // pub lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(
+        init_if_needed,
+        payer = bonding_pool,
+        associated_token::mint = lp_mint,
+        associated_token::authority = user,
+    )]
+    pub user_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        associated_token::mint = lp_mint,
+        associated_token::authority = amm_pool,
+    )]
+    pub lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
     pub rent: Sysvar<'info, Rent>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
