@@ -15,10 +15,6 @@ export const SOL_MINT = new anchor.web3.PublicKey(
   'So11111111111111111111111111111111111111112'
 );
 
-export const getTickerString = (ticker: number[]) => {
-  return String.fromCharCode(...ticker.filter((code) => code !== 0));
-};
-
 export const getLamports = (amount: number) => {
   return amount * LAMPORTS_PER_SOL;
 };
@@ -49,7 +45,9 @@ export const getSOLBalance = async (account: anchor.web3.PublicKey) => {
   return balance;
 };
 
-export const logTxnInfo = async (txn: anchor.web3.TransactionSignature) => {
+export const logTxnInfo = async (
+  txn: anchor.web3.TransactionSignature
+) => {
   await waitForTxnConfrimation(txn);
   const logs = await getLogs(provider.connection, txn);
   console.log('Transaction logs:', logs);
@@ -119,8 +117,11 @@ export const getMetadataPDA = (mint: anchor.web3.PublicKey) => {
 };
 
 export const getPoolPDA = (ticker: string) => {
-  const POOL_SEED_CONSTANT = 'pool';
-  const seeds = [Buffer.from(POOL_SEED_CONSTANT), Buffer.from(ticker)];
+  const POOL_BONDING_SEED_CONSTANT = 'pool';
+  const seeds = [
+    Buffer.from(POOL_BONDING_SEED_CONSTANT),
+    Buffer.from(ticker),
+  ];
   const [poolPDA] = anchor.web3.PublicKey.findProgramAddressSync(
     seeds,
     program.programId

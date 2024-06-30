@@ -6,8 +6,10 @@ use anchor_spl::{
     token_interface::{Mint as SPLMint, TokenAccount},
 };
 
-use crate::context::initialize_pool::{POOL_AUTH_SEED, POOL_MINT_SEED, POOL_SEED, POOL_VAULT_SEED};
-use crate::state::pool::{Pool, PoolVault};
+use crate::context::initialize_pool::{
+    POOL_AUTH_SEED, POOL_MINT_SEED, POOL_BONDING_SEED, POOL_SOL_VAULT_SEED,
+};
+use crate::state::pool::{BondingPool, PoolSolVault};
 
 #[derive(Accounts)]
 #[instruction(ticker: String)]
@@ -15,33 +17,25 @@ pub struct SellTokens<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
 
-    /// CHECK
     #[account(
         mut,
-        seeds = [POOL_AUTH_SEED.as_bytes(), ticker.as_bytes()],
+        seeds = [POOL_BONDING_SEED.as_bytes(), ticker.as_bytes()],
         bump,
     )]
-    pub authority: UncheckedAccount<'info>,
+    pub pool: Account<'info, BondingPool>,
 
     #[account(
         mut,
-        seeds = [POOL_SEED.as_bytes(), ticker.as_bytes()],
+        seeds = [POOL_SOL_VAULT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
     )]
-    pub pool: AccountLoader<'info, Pool>,
-
-    #[account(
-        mut,
-        seeds = [POOL_VAULT_SEED.as_bytes(), ticker.as_bytes()],
-        bump,
-    )]
-    pub vault: Account<'info, PoolVault>,
+    pub sol_vault: Account<'info, PoolSolVault>,
 
     #[account(
         mut,
         seeds = [POOL_MINT_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        mint::authority = authority,
+        mint::authority = mint,
     )]
     pub mint: Account<'info, Mint>,
 

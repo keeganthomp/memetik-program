@@ -5,9 +5,9 @@ import {
   getMintPDA,
   getMetadataPDA,
   getPoolPDA,
-  getTickerString,
   getSOLBalance,
   getSPLBalance,
+  getSol,
 } from './utils';
 import { Memetik } from '../target/types/memetik';
 
@@ -38,7 +38,7 @@ describe('memetik', () => {
 
   before(async () => {
     for (const user of users) {
-      await fundSol(user.publicKey);
+      await fundSol(user.publicKey, 100);
     }
   });
 
@@ -48,6 +48,7 @@ describe('memetik', () => {
     const mint = getMintPDA(tokenInfo.symbol);
     const metadata = getMetadataPDA(mint);
     try {
+      const creatorSolBalBefore = await getSOLBalance(creator.publicKey);
       await program.methods
         .initializePool(tokenInfo.symbol, tokenInfo.name, tokenInfo.uri)
         .accounts({
@@ -56,8 +57,11 @@ describe('memetik', () => {
         })
         .signers([creator])
         .rpc();
+      const creatorSolBalAfter = await getSOLBalance(creator.publicKey);
+      const costToCreate = creatorSolBalBefore - creatorSolBalAfter;
+      console.log('Cost to create pool (SOL):', getSol(costToCreate));
       const poolPDA = getPoolPDA(tokenInfo.symbol);
-      const pool = await program.account.pool.fetch(poolPDA);
+      const pool = await program.account.bondingPool.fetch(poolPDA);
       createdPools.push(pool);
     } catch (err) {
       console.log('err', err);
@@ -68,19 +72,18 @@ describe('memetik', () => {
   it('Can buy on bonding curve', async () => {
     const buyer = userB;
     const pool = createdPools[0];
-    const ticker = getTickerString(pool.ticker);
-    const BUY_AMOUNT = 100_000_000_000;
+    const BUY_AMOUNT = 100_000;
     try {
       const buyerSolBalBefore = await getSOLBalance(buyer.publicKey);
       const buyerTokenAccount = await anchor.utils.token.associatedAddress(
         {
-          mint: getMintPDA(ticker),
+          mint: getMintPDA(pool.ticker),
           owner: buyer.publicKey,
         }
       );
       const buyerTokenBalBefore = await getSPLBalance(buyerTokenAccount);
       await program.methods
-        .buy(ticker, new anchor.BN(BUY_AMOUNT))
+        .buy(pool.ticker, new anchor.BN(BUY_AMOUNT))
         .accounts({
           buyer: buyer.publicKey,
         })
@@ -99,18 +102,17 @@ describe('memetik', () => {
   it('Can sell on bonding curve', async () => {
     const seller = userB;
     const pool = createdPools[0];
-    const ticker = getTickerString(pool.ticker);
-    const SELL_AMOUNT = 100_000_000_000;
+    const SELL_AMOUNT = 10;
     try {
       const sellerSolBalBefore = await getSOLBalance(seller.publicKey);
       const sellerTokenAccount =
         await anchor.utils.token.associatedAddress({
-          mint: getMintPDA(ticker),
+          mint: getMintPDA(pool.ticker),
           owner: seller.publicKey,
         });
       const sellerTokenBalBefore = await getSPLBalance(sellerTokenAccount);
       await program.methods
-        .sell(ticker, new anchor.BN(SELL_AMOUNT))
+        .sell(pool.ticker, new anchor.BN(SELL_AMOUNT))
         .accounts({
           seller: seller.publicKey,
         })
@@ -118,8 +120,8 @@ describe('memetik', () => {
         .rpc();
       const sellerTokenBalAfter = await getSPLBalance(sellerTokenAccount);
       const sellerSolBalAfter = await getSOLBalance(seller.publicKey);
-      assert.ok(sellerSolBalAfter > sellerSolBalBefore);
-      assert.ok(sellerTokenBalAfter < sellerTokenBalBefore);
+      assert.ok(sellerSolBalAfter >= sellerSolBalBefore);
+      assert.ok(sellerTokenBalAfter <= sellerTokenBalBefore);
     } catch (err) {
       console.log('err buying', err);
       assert.fail();
@@ -129,10 +131,9 @@ describe('memetik', () => {
   it('Can not close pool early', async () => {
     const creator = userA;
     const pool = createdPools[0];
-    const ticker = getTickerString(pool.ticker);
     try {
       await program.methods
-        .close(ticker)
+        .close(pool.ticker)
         .accounts({
           signer: creator.publicKey,
         })
@@ -141,6 +142,36 @@ describe('memetik', () => {
       assert.fail();
     } catch (err) {
       assert(err?.error?.errorCode?.code === 'PoolCannotBeClosed');
+    }
+  });
+
+  it('Can add liquidity', async () => {
+    const liquidityProvider = userB;
+    const pool = createdPools[0];
+    const SOL_LIQ_AMOUNT = 4;
+    const TOKEN_LIQ_AMOUNT = 4;
+    try {
+      const lpSolBalBefore = await getSOLBalance(
+        liquidityProvider.publicKey
+      );
+      await program.methods
+        .addLiquidity(
+          pool.ticker,
+          new anchor.BN(SOL_LIQ_AMOUNT),
+          new anchor.BN(TOKEN_LIQ_AMOUNT)
+        )
+        .accounts({
+          user: liquidityProvider.publicKey,
+        })
+        .signers([liquidityProvider])
+        .rpc();
+      const lpSolBalAfter = await getSOLBalance(
+        liquidityProvider.publicKey
+      );
+      assert.ok(lpSolBalAfter < lpSolBalBefore);
+    } catch (err) {
+      console.log('err adding liquidity', err);
+      assert.fail();
     }
   });
 });

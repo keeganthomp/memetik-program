@@ -12,4 +12,6 @@ pub enum Error {
     PoolCannotBeClosed,
     #[msg("Unauthorized")]
     Unauthorized,
+    #[msg("Insufficient liquidity")]
+    InsufficientLiquidity,
 }
