@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 
 use crate::bonding_curve::constants::{DEFAULT_TOKEN_DECIMALS, MIN_TOK_PRICE};
-use crate::bonding_curve::utils::{calculate_maturity_time, calculate_test_time};
 
 #[account]
 pub struct BondingPool {
