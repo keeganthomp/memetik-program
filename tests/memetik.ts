@@ -67,8 +67,6 @@ const sellTokensOnCurve = async (
     .rpc();
   const sellerTokenBalAfter = await getSPLBalance(sellerTokenAccount);
   const sellerSolBalAfter = await getSOLBalance(seller.publicKey);
-  console.log('Seller SOL balance after:', sellerSolBalAfter);
-  console.log('Seller token balance after:', sellerTokenBalAfter);
   assert.ok(sellerSolBalAfter >= sellerSolBalBefore);
   assert.ok(sellerTokenBalAfter < sellerTokenBalBefore);
   return txn;
@@ -195,8 +193,6 @@ describe('memetik', () => {
           poolBeforePurchase.lastTokenPrice.toNumber();
         const tokenPriceAfter =
           poolAfterPurchase.lastTokenPrice.toNumber();
-        console.log('Token price before:', tokenPriceBefore);
-        console.log('Token price after:', tokenPriceAfter);
         assert.ok(tokenPriceAfter >= tokenPriceBefore);
         amountPurchased += amountToBuy;
       }
@@ -227,14 +223,11 @@ describe('memetik', () => {
           seller,
           amountToSell
         );
-        await logTxnInfo(txn);
         const poolAfterSell = await program.account.bondingPool.fetch(
           getPoolPDA(pool.ticker)
         );
         const tokenPriceBefore = poolBeforeSell.lastTokenPrice.toNumber();
         const tokenPriceAfter = poolAfterSell.lastTokenPrice.toNumber();
-        console.log('Token price before:', tokenPriceBefore);
-        console.log('Token price after:', tokenPriceAfter);
         assert.ok(tokenPriceAfter <= tokenPriceBefore);
         amountSold += amountToSell;
       }
