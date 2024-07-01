@@ -129,12 +129,15 @@ export const getPoolPDA = (ticker: string) => {
   return poolPDA;
 };
 
-export const getEscrowPDA = (ticker: string) => {
-  const ESCROW_SEED_CONSTANT = 'pool_escrow';
-  const seeds = [Buffer.from(ESCROW_SEED_CONSTANT), Buffer.from(ticker)];
-  const [escrowPDA] = anchor.web3.PublicKey.findProgramAddressSync(
+export const getPoolLPMint = async (ticker: string) => {
+  const POOL_LP_MINT_SEED_CONSTANT = 'pool_lp_mint';
+  const seeds = [
+    Buffer.from(POOL_LP_MINT_SEED_CONSTANT),
+    Buffer.from(ticker),
+  ];
+  const [poolLPMint] = anchor.web3.PublicKey.findProgramAddressSync(
     seeds,
     program.programId
   );
-  return escrowPDA;
+  return poolLPMint;
 };

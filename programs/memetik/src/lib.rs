@@ -15,8 +15,8 @@ pub mod bonding_curve;
 pub mod context;
 pub mod errors;
 pub mod state;
-pub mod utils;
 
+pub use amm::{amm_swap::calculate_swap, constants::*};
 pub use bonding_curve::{constants::REQUIRED_ESCROW_AMOUNT, price::*, utils::*};
 pub use context::{
     amm_add_liquidity::*, amm_remove_liquidity::*, amm_swap_tokens::*, bonding_buy_tokens::*,
@@ -24,7 +24,6 @@ pub use context::{
 };
 pub use errors::Error;
 pub use state::pool::*;
-pub use utils::amm_swap::calculate_swap;
 
 declare_id!("14a3y3QApSRvxd8kgG9S4FTjQFeTQ92XpUxTvXkTrknR");
 
@@ -94,6 +93,7 @@ pub mod memetik {
         pool.ticker = symbol.to_uppercase().clone();
         pool.mint = ctx.accounts.mint.to_account_info().key();
         pool.maturity_time = calculate_test_time();
+        pool.last_token_price = 0;
 
         msg!("Pool initialized successfully");
         Ok(())
@@ -154,6 +154,7 @@ pub mod memetik {
         /////////////////////////////////
         // Update pool state
         /////////////////////////////////
+        pool_state.last_token_price = latest_price_per_unit;
 
         // check if pool has matured
         let new_pool_vault_balance = ctx.accounts.sol_vault.to_account_info().lamports();
@@ -203,6 +204,11 @@ pub mod memetik {
 
         msg!("SOL transferred to seller successfully.");
 
+        /////////////////////////////////
+        // Update pool state
+        /////////////////////////////////
+        pool_state.last_token_price = latest_price_per_unit;
+
         Ok(())
     }
 
@@ -214,7 +220,6 @@ pub mod memetik {
             Error::Unauthorized
         );
 
-        let mint = &ctx.accounts.mint;
         let has_passed_maturity_time = check_if_maturity_time_passed(pool.maturity_time);
 
         // can only close pool if it has matured and the maturity time has passed

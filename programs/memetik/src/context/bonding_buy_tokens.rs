@@ -6,9 +6,7 @@ use anchor_spl::{
     token_interface::TokenAccount,
 };
 
-use crate::context::initialize_pool::{
-    POOL_AUTH_SEED, POOL_MINT_SEED, POOL_BONDING_SEED, POOL_SOL_VAULT_SEED,
-};
+use crate::amm::constants::*;
 use crate::state::pool::{BondingPool, PoolSolVault};
 
 #[derive(Accounts)]

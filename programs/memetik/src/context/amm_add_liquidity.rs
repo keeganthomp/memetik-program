@@ -8,10 +8,7 @@ use anchor_spl::{
     token_interface::{Mint as SPLMint, TokenAccount},
 };
 
-use crate::context::initialize_pool::{
-    POOL_AMM_SEED, POOL_AUTH_SEED, POOL_BONDING_SEED, POOL_LP_MINT_SEED, POOL_MINT_SEED,
-    POOL_SOL_VAULT_SEED,
-};
+use crate::amm::constants::*;
 use crate::state::pool::{AMMPool, PoolSolVault};
 
 #[derive(Accounts)]

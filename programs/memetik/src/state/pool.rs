@@ -1,7 +1,5 @@
 use anchor_lang::prelude::*;
 
-use crate::bonding_curve::constants::{DEFAULT_TOKEN_DECIMALS, MIN_TOK_PRICE};
-
 #[account]
 pub struct BondingPool {
     // bonding pool
@@ -9,6 +7,7 @@ pub struct BondingPool {
     pub ticker: String,
     pub mint: Pubkey,
     pub maturity_time: i64,
+    pub last_token_price: u64,
 }
 
 #[account]

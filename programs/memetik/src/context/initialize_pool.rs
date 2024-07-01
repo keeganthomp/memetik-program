@@ -5,16 +5,8 @@ use anchor_spl::{
 };
 
 use crate::bonding_curve::constants::DEFAULT_TOKEN_DECIMALS;
+use crate::amm::constants::*;
 use crate::state::pool::*;
-
-pub const POOL_BONDING_SEED: &str = "pool";
-pub const POOL_AMM_SEED: &str = "pool_amm";
-pub const POOL_MINT_SEED: &str = "pool_mint";
-pub const POOL_LP_MINT_SEED: &str = "pool_lp_mint";
-pub const POOL_ESCROW_SEED: &str = "pool_escrow";
-pub const POOL_SOL_VAULT_SEED: &str = "pool_vault";
-pub const POOL_TOKEN_VAULT_SEED: &str = "pool_token_vault";
-pub const POOL_AUTH_SEED: &str = "pool_auth";
 
 #[account]
 pub struct EmptyAccount {}

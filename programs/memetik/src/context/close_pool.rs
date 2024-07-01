@@ -5,9 +5,7 @@ use anchor_spl::{
     token::{Mint, Token},
 };
 
-use crate::context::initialize_pool::{
-    POOL_AUTH_SEED, POOL_ESCROW_SEED, POOL_MINT_SEED, POOL_BONDING_SEED,
-};
+use crate::amm::constants::*;
 use crate::state::pool::{BondingPool, PoolEscrow};
 
 #[derive(Accounts)]
@@ -20,17 +18,9 @@ pub struct ClosePool<'info> {
         mut,
         seeds = [POOL_BONDING_SEED.as_bytes(), symbol.as_bytes()],
         bump,
-    )]
-    pub pool: Account<'info, BondingPool>,
-
-    #[account(
-        mut,
-        seeds = [POOL_MINT_SEED.as_bytes(), symbol.as_bytes()],
-        bump,
-        mint::authority = mint,
         close = signer,
     )]
-    pub mint: Account<'info, Mint>,
+    pub pool: Account<'info, BondingPool>,
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
