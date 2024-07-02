@@ -135,10 +135,23 @@ export const getMetadataPDA = (mint: anchor.web3.PublicKey) => {
   return metadataAddress;
 };
 
-export const getPoolPDA = (ticker: string) => {
+export const getBondingPoolPDA = (ticker: string) => {
   const POOL_BONDING_SEED_CONSTANT = 'pool';
   const seeds = [
     Buffer.from(POOL_BONDING_SEED_CONSTANT),
+    Buffer.from(ticker),
+  ];
+  const [poolPDA] = anchor.web3.PublicKey.findProgramAddressSync(
+    seeds,
+    program.programId
+  );
+  return poolPDA;
+};
+
+export const getAmmPoolPDA = (ticker: string) => {
+  const POOL_AMM_SEED_CONSTANT = 'pool_amm';
+  const seeds = [
+    Buffer.from(POOL_AMM_SEED_CONSTANT),
     Buffer.from(ticker),
   ];
   const [poolPDA] = anchor.web3.PublicKey.findProgramAddressSync(

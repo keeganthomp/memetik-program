@@ -18,7 +18,7 @@ pub struct AMMPool {
     pub ticker: String,
     pub sol_balance: u64,
     pub token_balance: u64,
-    pub lp_balance: u64,
+    pub lp_supply: u64,
 }
 
 #[account]

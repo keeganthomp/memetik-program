@@ -4,12 +4,13 @@ import {
   fundSol,
   getMintPDA,
   getMetadataPDA,
-  getPoolPDA,
+  getBondingPoolPDA,
   getPoolLPMint,
   getSOLBalance,
   getSPLBalance,
   getSol,
   logTxnInfo,
+  getAmmPoolPDA,
   getPriceFeedAccount,
 } from './utils';
 import { Memetik } from '../target/types/memetik';
@@ -117,7 +118,7 @@ describe('memetik', () => {
         'Cost to create pool (SOL):',
         getSol(costToCreate).toFixed(3)
       );
-      const poolPDA = getPoolPDA(tokenInfo.symbol);
+      const poolPDA = getBondingPoolPDA(tokenInfo.symbol);
       const pool = await program.account.bondingPool.fetch(poolPDA);
       createdPools.push(pool);
     } catch (err) {
@@ -181,7 +182,7 @@ describe('memetik', () => {
         );
         console.log(`Buying ${amountToBuy} tokens on curve...`);
         const poolBeforePurchase = await program.account.bondingPool.fetch(
-          getPoolPDA(pool.ticker)
+          getBondingPoolPDA(pool.ticker)
         );
         const txn = await buyTokensOnCurve(
           pool.ticker,
@@ -189,7 +190,7 @@ describe('memetik', () => {
           amountToBuy
         );
         const poolAfterPurchase = await program.account.bondingPool.fetch(
-          getPoolPDA(pool.ticker)
+          getBondingPoolPDA(pool.ticker)
         );
         const tokenPriceBefore =
           poolBeforePurchase.lastTokenPrice.toNumber();
@@ -218,7 +219,7 @@ describe('memetik', () => {
         );
         console.log(`Selling ${amountToSell} tokens on curve...`);
         const poolBeforeSell = await program.account.bondingPool.fetch(
-          getPoolPDA(pool.ticker)
+          getBondingPoolPDA(pool.ticker)
         );
         const txn = await sellTokensOnCurve(
           pool.ticker,
@@ -226,7 +227,7 @@ describe('memetik', () => {
           amountToSell
         );
         const poolAfterSell = await program.account.bondingPool.fetch(
-          getPoolPDA(pool.ticker)
+          getBondingPoolPDA(pool.ticker)
         );
         const tokenPriceBefore = poolBeforeSell.lastTokenPrice.toNumber();
         const tokenPriceAfter = poolAfterSell.lastTokenPrice.toNumber();
@@ -319,7 +320,7 @@ describe('memetik', () => {
           BATCH_BUY_AMOUNT
         );
         const poolAfterPurchase = await program.account.bondingPool.fetch(
-          getPoolPDA(pool.ticker)
+          getBondingPoolPDA(pool.ticker)
         );
         const poolDidMature = poolAfterPurchase.hasMatured;
         hasMatured = poolDidMature;
@@ -350,12 +351,18 @@ describe('memetik', () => {
         })
         .signers([liquidityProvider])
         .rpc();
+      const poolAfter = await program.account.ammPool.fetch(
+        getAmmPoolPDA(pool.ticker)
+      );
       const lpSolBalAfter = await getSOLBalance(
         liquidityProvider.publicKey
       );
       const lpTokenBalAfter = await getSPLBalance(lpTokenAccount);
       assert.ok(lpSolBalAfter < lpSolBalBefore);
       assert.ok(lpTokenBalAfter > lpTokenBalBefore);
+      assert.ok(poolAfter.lpSupply.toNumber() > 0);
+      assert.ok(poolAfter.solBalance.toNumber() > 0);
+      assert.ok(poolAfter.tokenBalance.toNumber() > 0);
     } catch (err) {
       console.log('err adding liquidity', err);
       assert.fail();
@@ -433,6 +440,9 @@ describe('memetik', () => {
     const pool = createdPools[0];
     const LIQ_AMOUNT = 5;
     try {
+      const poolBefore = await program.account.ammPool.fetch(
+        getAmmPoolPDA(pool.ticker)
+      );
       const poolLPMint = await getPoolLPMint(pool.ticker);
       const lpSolBalBefore = await getSOLBalance(
         liquidityProvider.publicKey
@@ -449,12 +459,25 @@ describe('memetik', () => {
         })
         .signers([liquidityProvider])
         .rpc();
+      const poolAfter = await program.account.ammPool.fetch(
+        getAmmPoolPDA(pool.ticker)
+      );
       const lpSolBalAfter = await getSOLBalance(
         liquidityProvider.publicKey
       );
       const lpTokenBalAfter = await getSPLBalance(lpTokenAccount);
       assert.ok(lpSolBalAfter > lpSolBalBefore);
       assert.ok(lpTokenBalAfter < lpTokenBalBefore);
+      assert.ok(
+        poolAfter.lpSupply.toNumber() < poolBefore.lpSupply.toNumber()
+      );
+      assert.ok(
+        poolAfter.solBalance.toNumber() < poolBefore.solBalance.toNumber()
+      );
+      assert.ok(
+        poolAfter.tokenBalance.toNumber() <
+          poolBefore.tokenBalance.toNumber()
+      );
     } catch (err) {
       console.log('err removing liquidity', err);
       assert.fail();

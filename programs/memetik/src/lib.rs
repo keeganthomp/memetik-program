@@ -335,6 +335,7 @@ pub mod memetik {
         // Update pool state
         amm_pool.sol_balance += sol_amount;
         amm_pool.token_balance += token_amount;
+        amm_pool.lp_supply += lp_amount;
 
         msg!("Pool state updated successfully");
         msg!("Pool sol balance: {}", amm_pool.sol_balance);
@@ -412,6 +413,7 @@ pub mod memetik {
         // Update pool reserves
         amm_pool.sol_balance -= sol_amount_out as u64;
         amm_pool.token_balance -= token_amount_out as u64;
+        amm_pool.lp_supply -= lp_token_amount as u64;
 
         msg!("Liquidity removed successfully");
         msg!("New SOL reserve: {}", amm_pool.sol_balance);
