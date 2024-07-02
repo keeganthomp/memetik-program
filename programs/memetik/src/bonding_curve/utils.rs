@@ -25,7 +25,7 @@ pub fn calculate_maturity_time() -> i64 {
 
 pub fn calculate_test_time() -> i64 {
     let current_timestamp = Clock::get().unwrap().unix_timestamp;
-    let test_date = current_timestamp + 3; // x seconds from now
+    let test_date = current_timestamp + 90; // x seconds from now
     test_date
 }
 

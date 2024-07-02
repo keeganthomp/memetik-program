@@ -9,6 +9,7 @@ pub struct BondingPool {
     pub maturity_time: i64,
     pub last_token_price: u64,
     pub has_matured: bool,
+    pub is_inactive: bool,
 }
 
 #[account]

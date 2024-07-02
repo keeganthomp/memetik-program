@@ -140,7 +140,7 @@ describe('memetik', () => {
         .rpc();
       assert.fail();
     } catch (err) {
-      assert(err?.error?.errorCode?.code === 'PoolCannotBeClosed');
+      assert(err?.error?.errorCode?.code === 'PoolStillActive');
     }
   });
 

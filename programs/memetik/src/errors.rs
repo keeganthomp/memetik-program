@@ -20,6 +20,10 @@ pub enum Error {
     Overflow,
     #[msg("Invalid swap input")]
     InvalidSwapInput,
+    #[msg("Pool inactive")]
+    PoolInactive,
+    #[msg("Pool still active")]
+    PoolStillActive,
     #[msg("Pool has not matured to AMM")]
     PoolHasNotMaturedAMM,
     #[msg("Pool has mautred. Use Swap.")]

@@ -1,8 +1,8 @@
 #![allow(unused)]
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::{invoke, invoke_signed};
 use anchor_lang::solana_program::native_token::LAMPORTS_PER_SOL;
+use anchor_lang::solana_program::program::{invoke, invoke_signed};
 use anchor_lang::solana_program::system_instruction;
 use anchor_spl::{
     metadata::{
@@ -106,6 +106,7 @@ pub mod memetik {
     pub fn buy(ctx: Context<BuyTokens>, ticker: String, amount: u64) -> Result<()> {
         let pool_state = &mut ctx.accounts.pool;
         require!(pool_state.has_matured == false, Error::PoolHasMaturedSwap);
+        require!(!pool_state.is_inactive, Error::PoolInactive);
         require!(amount > 0, Error::NoTokensToBuy);
 
         let mint = &ctx.accounts.mint;
@@ -174,9 +175,16 @@ pub mod memetik {
         let price_scale: f64 = (price as f64) / (10 as f64).powi(pyth_price.exponent.abs() as i32);
         let formatted_price: f64 = format!("{:.2}", price_scale).parse::<f64>().unwrap();
         let new_pool_vault_balance = ctx.accounts.sol_vault.to_account_info().lamports();
-        let has_reached_maturity_amount = check_if_maturity_amount_reached(new_pool_vault_balance, formatted_price);
+        let has_reached_maturity_amount =
+            check_if_maturity_amount_reached(new_pool_vault_balance, formatted_price);
         if has_reached_maturity_amount {
             pool_state.has_matured = true;
+        }
+
+        // if the time to reach maturity has passed and the pool has not reached the maturity amount - set inactive
+        let has_passed_maturity_time = check_if_maturity_time_passed(pool_state.maturity_time);
+        if has_passed_maturity_time {
+            pool_state.is_inactive = true;
         }
 
         Ok(())
@@ -185,6 +193,7 @@ pub mod memetik {
     pub fn sell(ctx: Context<SellTokens>, _ticker: String, amount: u64) -> Result<()> {
         let pool_state = &mut ctx.accounts.pool;
         require!(pool_state.has_matured == false, Error::PoolHasMaturedSwap);
+        require!(!pool_state.is_inactive, Error::PoolInactive);
         require!(amount > 0, Error::NoTokensToSell);
         require!(
             ctx.accounts.seller_token_account.amount >= amount,
@@ -239,12 +248,7 @@ pub mod memetik {
             Error::Unauthorized
         );
         require!(pool.has_matured == false, Error::PoolHasMaturedSwap);
-
-        let has_passed_maturity_time = check_if_maturity_time_passed(pool.maturity_time);
-
-        // can only close pool if it has matured and the maturity time has passed
-        require!(has_passed_maturity_time, Error::PoolCannotBeClosed);
-
+        require!(pool.is_inactive, Error::PoolStillActive);
         Ok(())
     }
 
