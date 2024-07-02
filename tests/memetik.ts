@@ -10,6 +10,7 @@ import {
   getSPLBalance,
   getSol,
   logTxnInfo,
+  getPriceFeedAccount,
 } from './utils';
 import { Memetik } from '../target/types/memetik';
 
@@ -37,6 +38,7 @@ const buyTokensOnCurve = async (
     .buy(ticker, new anchor.BN(amount))
     .accounts({
       buyer: buyer.publicKey,
+      priceUpdate: getPriceFeedAccount(),
     })
     .signers([buyer])
     .rpc();
@@ -146,7 +148,7 @@ describe('memetik', () => {
     const pool = createdPools[0];
     const BUY_AMOUNT = 100;
     try {
-      await buyTokensOnCurve(pool.ticker, buyer, BUY_AMOUNT);
+      const txn = await buyTokensOnCurve(pool.ticker, buyer, BUY_AMOUNT);
     } catch (err) {
       console.log('err buying', err);
       assert.fail();
@@ -168,8 +170,8 @@ describe('memetik', () => {
   it('Token price increases after buying on curve', async () => {
     const buyer = userB;
     const pool = createdPools[0];
-    const TOTAL_AMOUNT_TO_BUY = 10_000;
-    const PURCHASE_BATCH_SIZE = 2_000;
+    const TOTAL_AMOUNT_TO_BUY = 40_000;
+    const PURCHASE_BATCH_SIZE = 10_000;
     try {
       let amountPurchased = 0;
       while (amountPurchased < TOTAL_AMOUNT_TO_BUY) {
@@ -205,8 +207,8 @@ describe('memetik', () => {
   it('Token price decreases after selling on curve', async () => {
     const seller = userB;
     const pool = createdPools[0];
-    const TOTAL_AMOUNT_TO_SELL = 5_000;
-    const SELL_BATCH_SIZE = 1_200;
+    const TOTAL_AMOUNT_TO_SELL = 10_000;
+    const SELL_BATCH_SIZE = 3_000;
     try {
       let amountSold = 0;
       while (amountSold < TOTAL_AMOUNT_TO_SELL) {
@@ -237,6 +239,97 @@ describe('memetik', () => {
     }
   });
 
+  it('Any user can buy tokens', async () => {
+    const buyer = userC;
+    const pool = createdPools[0];
+    const BUY_AMOUNT = 100;
+    try {
+      await buyTokensOnCurve(pool.ticker, buyer, BUY_AMOUNT);
+    } catch (err) {
+      console.log('err buying', err);
+      assert.fail();
+    }
+  });
+
+  it('Any user can sell tokens', async () => {
+    const seller = userC;
+    const pool = createdPools[0];
+    const SELL_AMOUNT = 100;
+    try {
+      await sellTokensOnCurve(pool.ticker, seller, SELL_AMOUNT);
+    } catch (err) {
+      console.log('err buying', err);
+      assert.fail();
+    }
+  });
+
+  it('Can not add liquidity if token has not matured', async () => {
+    const swapper = userB;
+    const pool = createdPools[0];
+    const SWAP_AMOUNT = 10;
+    try {
+      await program.methods
+        .addLiquidity(
+          pool.ticker,
+          new anchor.BN(SWAP_AMOUNT),
+          new anchor.BN(SWAP_AMOUNT)
+        )
+        .accounts({
+          user: swapper.publicKey,
+        })
+        .signers([swapper])
+        .rpc();
+      assert.fail();
+    } catch (err) {
+      assert(err?.error?.errorCode?.code === 'PoolHasNotMaturedAMM');
+    }
+  });
+
+  it('Can not swap if token has not matured', async () => {
+    const swapper = userB;
+    const pool = createdPools[0];
+    const SWAP_AMOUNT = 10;
+    try {
+      await program.methods
+        .swap(pool.ticker, new anchor.BN(SWAP_AMOUNT), true)
+        .accounts({
+          user: swapper.publicKey,
+        })
+        .signers([swapper])
+        .rpc();
+      assert.fail();
+    } catch (err) {}
+  });
+
+  // Need to bump the bonding pool to AMM pool with large purchase
+  it('Pool can mature after reuired MC reached', async () => {
+    const buyer = userB;
+    const pool = createdPools[0];
+    const BATCH_BUY_AMOUNT = 30_000;
+    let hasMatured = false;
+    while (!hasMatured) {
+      console.log(
+        `Pool is not matured yet, buying ${BATCH_BUY_AMOUNT} more tokens...`
+      );
+      try {
+        assert;
+        const txn = await buyTokensOnCurve(
+          pool.ticker,
+          buyer,
+          BATCH_BUY_AMOUNT
+        );
+        const poolAfterPurchase = await program.account.bondingPool.fetch(
+          getPoolPDA(pool.ticker)
+        );
+        const poolDidMature = poolAfterPurchase.hasMatured;
+        hasMatured = poolDidMature;
+      } catch (err) {
+        console.log('err buying', err);
+        assert.fail();
+      }
+    }
+  });
+
   it('Can add liquidity', async () => {
     const liquidityProvider = userB;
     const pool = createdPools[0];
@@ -251,11 +344,7 @@ describe('memetik', () => {
       });
       const lpTokenBalBefore = await getSPLBalance(lpTokenAccount);
       await program.methods
-        .addLiquidity(
-          pool.ticker,
-          new anchor.BN(100),
-          new anchor.BN(100)
-        )
+        .addLiquidity(pool.ticker, new anchor.BN(100), new anchor.BN(100))
         .accounts({
           user: liquidityProvider.publicKey,
         })

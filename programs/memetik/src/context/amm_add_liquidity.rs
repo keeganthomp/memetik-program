@@ -9,7 +9,7 @@ use anchor_spl::{
 };
 
 use crate::amm::constants::*;
-use crate::state::pool::{AMMPool, PoolSolVault};
+use crate::state::pool::{AMMPool, PoolSolVault, BondingPool};
 
 #[derive(Accounts)]
 #[instruction(ticker: String)]
@@ -58,6 +58,13 @@ pub struct AddLiquidity<'info> {
         mint::authority = token_mint,
     )]
     pub token_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        seeds = [POOL_BONDING_SEED.as_bytes(), ticker.as_bytes()],
+        bump,
+    )]
+    pub bonding_pool: Account<'info, BondingPool>,
 
     #[account(
         init_if_needed,

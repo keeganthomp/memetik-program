@@ -8,7 +8,7 @@ use anchor_spl::{
     token_interface::{Mint as SPLMint, TokenAccount},
 };
 
-use crate::state::pool::{AMMPool, PoolSolVault};
+use crate::state::pool::{AMMPool, PoolSolVault, BondingPool};
 use crate::amm::constants::*;
 
 #[derive(Accounts)]
@@ -44,6 +44,13 @@ pub struct RemoveLiquidity<'info> {
         bump,
     )]
     pub token_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        seeds = [POOL_BONDING_SEED.as_bytes(), ticker.as_bytes()],
+        bump,
+    )]
+    pub bonding_pool: Account<'info, BondingPool>,
 
     #[account(
         mut,

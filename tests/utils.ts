@@ -1,12 +1,31 @@
 import * as anchor from '@coral-xyz/anchor';
+import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { Memetik } from '../target/types/memetik';
 import { getLogs } from '@solana-developers/helpers';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PythSolanaReceiver } from '@pythnetwork/pyth-solana-receiver';
+
+export const SOL_PRICE_FEED_ID =
+  '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d';
 
 // Configure the client to use the local cluster.
 anchor.setProvider(anchor.AnchorProvider.env());
 const program = anchor.workspace.Memetik as anchor.Program<Memetik>;
 const provider = anchor.getProvider();
+
+const priceFeedKP = anchor.web3.Keypair.generate();
+const priceFeedWallet = new NodeWallet(priceFeedKP);
+const pythSolanaReceiver = new PythSolanaReceiver({
+  connection: provider.connection,
+  wallet: priceFeedWallet,
+});
+
+export const getPriceFeedAccount = () => {
+  return pythSolanaReceiver.getPriceFeedAccountAddress(
+    0,
+    SOL_PRICE_FEED_ID
+  );
+};
 
 export const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey(
   'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s'

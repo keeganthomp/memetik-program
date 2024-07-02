@@ -5,6 +5,7 @@ use anchor_spl::{
     token::{Mint, Token},
     token_interface::TokenAccount,
 };
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 use crate::amm::constants::*;
 use crate::state::pool::{BondingPool, PoolSolVault};
@@ -44,6 +45,9 @@ pub struct BuyTokens<'info> {
         associated_token::authority = buyer,
     )]
     pub buyer_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+     // Add this account to any instruction Context that needs price data.
+     pub price_update: Account<'info, PriceUpdateV2>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,

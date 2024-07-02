@@ -2,6 +2,7 @@
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::{invoke, invoke_signed};
+use anchor_lang::solana_program::native_token::LAMPORTS_PER_SOL;
 use anchor_lang::solana_program::system_instruction;
 use anchor_spl::{
     metadata::{
@@ -9,12 +10,14 @@ use anchor_spl::{
     },
     token::{self, mint_to, Burn, MintTo, Transfer},
 };
+use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
 pub mod amm;
 pub mod bonding_curve;
 pub mod context;
 pub mod errors;
 pub mod state;
+pub mod utils;
 
 pub use amm::{amm_swap::calculate_swap, constants::*};
 pub use bonding_curve::{constants::REQUIRED_ESCROW_AMOUNT, price::*, utils::*};
@@ -24,6 +27,7 @@ pub use context::{
 };
 pub use errors::Error;
 pub use state::pool::*;
+pub use utils::*;
 
 declare_id!("14a3y3QApSRvxd8kgG9S4FTjQFeTQ92XpUxTvXkTrknR");
 
@@ -100,9 +104,10 @@ pub mod memetik {
     }
 
     pub fn buy(ctx: Context<BuyTokens>, ticker: String, amount: u64) -> Result<()> {
+        let pool_state = &mut ctx.accounts.pool;
+        require!(pool_state.has_matured == false, Error::PoolHasMaturedSwap);
         require!(amount > 0, Error::NoTokensToBuy);
 
-        let pool_state = &mut ctx.accounts.pool;
         let mint = &ctx.accounts.mint;
 
         let current_supply = ctx.accounts.mint.supply;
@@ -157,21 +162,35 @@ pub mod memetik {
         pool_state.last_token_price = latest_price_per_unit;
 
         // check if pool has matured
+
+        let price_update = &mut ctx.accounts.price_update;
+        // This string is the id of the BTC/USD feed. See https://pyth.network/developers/price-feed-ids for all available IDs.
+        let pyth_price = price_update.get_price_no_older_than(
+            &Clock::get()?,
+            PRICE_MAXIMUM_AGE,
+            &get_feed_id_from_hex(PRICE_FEED_ID)?,
+        )?;
+        let price = pyth_price.price as i64;
+        let price_scale: f64 = (price as f64) / (10 as f64).powi(pyth_price.exponent.abs() as i32);
+        let formatted_price: f64 = format!("{:.2}", price_scale).parse::<f64>().unwrap();
         let new_pool_vault_balance = ctx.accounts.sol_vault.to_account_info().lamports();
-        let has_reached_maturity_amount = check_if_maturity_amount_reached(new_pool_vault_balance);
-        if has_reached_maturity_amount {}
+        let has_reached_maturity_amount = check_if_maturity_amount_reached(new_pool_vault_balance, formatted_price);
+        if has_reached_maturity_amount {
+            pool_state.has_matured = true;
+        }
 
         Ok(())
     }
 
     pub fn sell(ctx: Context<SellTokens>, _ticker: String, amount: u64) -> Result<()> {
+        let pool_state = &mut ctx.accounts.pool;
+        require!(pool_state.has_matured == false, Error::PoolHasMaturedSwap);
         require!(amount > 0, Error::NoTokensToSell);
         require!(
             ctx.accounts.seller_token_account.amount >= amount,
             Error::NoTokensToSell
         );
 
-        let pool_state = &mut ctx.accounts.pool;
         let mint = &ctx.accounts.mint;
 
         let current_supply = ctx.accounts.mint.supply;
@@ -219,6 +238,7 @@ pub mod memetik {
             pool.creator == ctx.accounts.signer.to_account_info().key(),
             Error::Unauthorized
         );
+        require!(pool.has_matured == false, Error::PoolHasMaturedSwap);
 
         let has_passed_maturity_time = check_if_maturity_time_passed(pool.maturity_time);
 
@@ -234,6 +254,7 @@ pub mod memetik {
         sol_amount: u64,
         token_amount: u64,
     ) -> Result<()> {
+        let bonding_pool = &ctx.accounts.bonding_pool;
         let amm_pool = &mut ctx.accounts.amm_pool;
         let user = &ctx.accounts.user;
         let user_token_account = &ctx.accounts.user_token_account;
@@ -242,6 +263,8 @@ pub mod memetik {
         let pool_sol_vault = &ctx.accounts.sol_vault;
         let token_program = &ctx.accounts.token_program;
         let system_program = &ctx.accounts.system_program;
+
+        require!(bonding_pool.has_matured, Error::PoolHasNotMaturedAMM);
 
         msg!("Adding liquidity to pool");
 
@@ -325,6 +348,7 @@ pub mod memetik {
         ticker: String,
         lp_token_amount: u64,
     ) -> Result<()> {
+        let bonding_pool = &ctx.accounts.bonding_pool;
         let amm_pool = &mut ctx.accounts.amm_pool;
         let user = &ctx.accounts.user;
         let user_lp_token_account = &ctx.accounts.user_lp_token_account;
@@ -341,6 +365,8 @@ pub mod memetik {
 
         let sol_amount_out = (sol_balance * lp_token_amount) / lp_supply as u128;
         let token_amount_out = (token_balance * lp_token_amount) / lp_supply as u128;
+
+        require!(bonding_pool.has_matured, Error::PoolHasNotMaturedAMM);
 
         // Burn LP tokens from the user
         token::burn(
@@ -401,7 +427,7 @@ pub mod memetik {
         is_sol_to_token: bool,
     ) -> Result<()> {
         const SWAP_FEE_PERCENTAGE: u64 = 3;
-
+        let bonding_pool = &ctx.accounts.bonding_pool;
         let amm_pool = &mut ctx.accounts.amm_pool;
         let user = &ctx.accounts.user;
         let user_token_account = &ctx.accounts.user_token_account;
@@ -412,6 +438,8 @@ pub mod memetik {
 
         let current_token_balance = amm_pool.token_balance as u128;
         let current_sol_balance = amm_pool.sol_balance as u128;
+
+        require!(bonding_pool.has_matured, Error::PoolHasNotMaturedAMM);
 
         let amount_in = amount_in as u128;
         let (amount_out, new_sol_reserve, new_token_reserve) = calculate_swap(
