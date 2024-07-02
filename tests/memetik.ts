@@ -318,7 +318,6 @@ describe('memetik', () => {
           buyer,
           BATCH_BUY_AMOUNT
         );
-        await logTxnInfo(txn);
         const poolAfterPurchase = await program.account.bondingPool.fetch(
           getBondingPoolPDA(pool.ticker)
         );
