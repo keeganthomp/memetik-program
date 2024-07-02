@@ -39,11 +39,9 @@ pub struct Swap<'info> {
     pub sol_vault: AccountInfo<'info>,
 
     #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         seeds = [POOL_AMM_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        space = 8 + std::mem::size_of::<AMMPool>(),
     )]
     pub amm_pool: Account<'info, AMMPool>,
 

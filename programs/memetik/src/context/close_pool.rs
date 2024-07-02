@@ -6,7 +6,7 @@ use anchor_spl::{
 };
 
 use crate::amm::constants::*;
-use crate::state::pool::{BondingPool, PoolEscrow};
+use crate::state::pool::{BondingPool, PoolEscrow, AMMPool};
 
 #[derive(Accounts)]
 #[instruction(symbol: String)]
@@ -21,6 +21,14 @@ pub struct ClosePool<'info> {
         close = signer,
     )]
     pub pool: Account<'info, BondingPool>,
+
+    #[account(
+        mut,
+        seeds = [POOL_AMM_SEED.as_bytes(), symbol.as_bytes()],
+        bump,
+        close = signer,
+    )]
+    pub amm_pool: Account<'info, AMMPool>,
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,

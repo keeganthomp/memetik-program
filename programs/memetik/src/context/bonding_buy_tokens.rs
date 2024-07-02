@@ -8,7 +8,7 @@ use anchor_spl::{
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 use crate::amm::constants::*;
-use crate::state::pool::{BondingPool, PoolSolVault};
+use crate::state::pool::{BondingPool, PoolSolVault, AMMPool};
 
 #[derive(Accounts)]
 #[instruction(ticker: String)]
@@ -21,7 +21,22 @@ pub struct BuyTokens<'info> {
         seeds = [POOL_BONDING_SEED.as_bytes(), ticker.as_bytes()],
         bump,
     )]
-    pub pool: Account<'info, BondingPool>,
+    pub bonding_pool: Account<'info, BondingPool>,
+
+    #[account(
+        mut,
+        seeds = [POOL_AMM_SEED.as_bytes(), ticker.as_bytes()],
+        bump,
+    )]
+    pub amm_pool: Account<'info, AMMPool>,
+
+    #[account(
+        init_if_needed,
+        payer = bonding_pool,
+        associated_token::mint = mint,
+        associated_token::authority = amm_pool,
+    )]
+    pub token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -46,8 +61,8 @@ pub struct BuyTokens<'info> {
     )]
     pub buyer_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-     // Add this account to any instruction Context that needs price data.
-     pub price_update: Account<'info, PriceUpdateV2>,
+    // Add this account to any instruction Context that needs price data.
+    pub price_update: Account<'info, PriceUpdateV2>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,

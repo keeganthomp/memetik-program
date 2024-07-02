@@ -15,6 +15,7 @@ pub struct BondingPool {
 #[account]
 pub struct AMMPool {
     // bonding pool
+    pub is_active: bool,
     pub mint: Pubkey,
     pub ticker: String,
     pub sol_balance: u64,

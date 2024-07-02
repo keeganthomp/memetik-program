@@ -104,9 +104,10 @@ pub mod memetik {
     }
 
     pub fn buy(ctx: Context<BuyTokens>, ticker: String, amount: u64) -> Result<()> {
-        let pool_state = &mut ctx.accounts.pool;
-        require!(pool_state.has_matured == false, Error::PoolHasMaturedSwap);
-        require!(!pool_state.is_inactive, Error::PoolInactive);
+        let bonding_pool = &mut ctx.accounts.bonding_pool;
+        let amm_pool = &mut ctx.accounts.amm_pool;
+        require!(bonding_pool.has_matured == false, Error::PoolHasMaturedSwap);
+        require!(!bonding_pool.is_inactive, Error::PoolInactive);
         require!(amount > 0, Error::NoTokensToBuy);
 
         let mint = &ctx.accounts.mint;
@@ -160,7 +161,7 @@ pub mod memetik {
         /////////////////////////////////
         // Update pool state
         /////////////////////////////////
-        pool_state.last_token_price = latest_price_per_unit;
+        bonding_pool.last_token_price = latest_price_per_unit;
 
         // check if pool has matured
 
@@ -178,13 +179,39 @@ pub mod memetik {
         let has_reached_maturity_amount =
             check_if_maturity_amount_reached(new_pool_vault_balance, formatted_price);
         if has_reached_maturity_amount {
-            pool_state.has_matured = true;
+            bonding_pool.has_matured = true;
+            amm_pool.is_active = true;
+
+            //////////////////////////////////////
+            // Mint tokens to amm pool token vault
+            /////////////////////////////////////
+            // NOTE: the sol vault is shared between the bonding pool and the amm pool - no need t0 transfer sol
+            let amm_token_vault = &ctx.accounts.token_vault;
+            let total_mint_supply = ctx.accounts.mint.supply;
+            let auth_seeds = &[
+                POOL_MINT_SEED.as_bytes(),
+                ticker.as_bytes(),
+                &[ctx.bumps.mint],
+            ];
+            let signer = [&auth_seeds[..]];
+            mint_to(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    MintTo {
+                        authority: ctx.accounts.mint.to_account_info(),
+                        to: amm_token_vault.to_account_info(),
+                        mint: ctx.accounts.mint.to_account_info(),
+                    },
+                    &signer,
+                ),
+                total_mint_supply,
+            )?;
         }
 
         // if the time to reach maturity has passed and the pool has not reached the maturity amount - set inactive
-        let has_passed_maturity_time = check_if_maturity_time_passed(pool_state.maturity_time);
+        let has_passed_maturity_time = check_if_maturity_time_passed(bonding_pool.maturity_time);
         if has_passed_maturity_time {
-            pool_state.is_inactive = true;
+            bonding_pool.is_inactive = true;
         }
 
         Ok(())
@@ -258,7 +285,6 @@ pub mod memetik {
         sol_amount: u64,
         token_amount: u64,
     ) -> Result<()> {
-        let bonding_pool = &ctx.accounts.bonding_pool;
         let amm_pool = &mut ctx.accounts.amm_pool;
         let user = &ctx.accounts.user;
         let user_token_account = &ctx.accounts.user_token_account;
@@ -268,7 +294,7 @@ pub mod memetik {
         let token_program = &ctx.accounts.token_program;
         let system_program = &ctx.accounts.system_program;
 
-        require!(bonding_pool.has_matured, Error::PoolHasNotMaturedAMM);
+        require!(amm_pool.is_active, Error::PoolHasNotMaturedAMM);
 
         msg!("Adding liquidity to pool");
 

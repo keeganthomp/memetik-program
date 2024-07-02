@@ -1,7 +1,9 @@
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::{
     metadata::Metadata as Metaplex,
     token::{Mint, Token},
+    token_interface::{Mint as SPLMint, TokenAccount},
 };
 
 use crate::bonding_curve::constants::DEFAULT_TOKEN_DECIMALS;
@@ -43,6 +45,23 @@ pub struct InitializePool<'info> {
     #[account(
         init,
         payer = signer,
+        seeds = [POOL_AMM_SEED.as_bytes(), symbol.as_bytes()],
+        bump,
+        space = 8 + std::mem::size_of::<AMMPool>(),
+    )]
+    pub amm_pool: Account<'info, AMMPool>,
+
+    #[account(
+        init_if_needed,
+        payer = signer,
+        associated_token::mint = mint,
+        associated_token::authority = amm_pool,
+    )]
+    pub token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        init,
+        payer = signer,
         seeds = [POOL_SOL_VAULT_SEED.as_bytes(), symbol.as_bytes()],
         bump,
         space = 8 + std::mem::size_of::<PoolSolVault>(),
@@ -53,4 +72,5 @@ pub struct InitializePool<'info> {
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub token_metadata_program: Program<'info, Metaplex>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 }

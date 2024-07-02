@@ -9,7 +9,7 @@ use anchor_spl::{
 };
 
 use crate::amm::constants::*;
-use crate::state::pool::{AMMPool, PoolSolVault, BondingPool};
+use crate::state::pool::{AMMPool, BondingPool, PoolSolVault};
 
 #[derive(Accounts)]
 #[instruction(ticker: String)]
@@ -61,17 +61,8 @@ pub struct AddLiquidity<'info> {
 
     #[account(
         mut,
-        seeds = [POOL_BONDING_SEED.as_bytes(), ticker.as_bytes()],
-        bump,
-    )]
-    pub bonding_pool: Account<'info, BondingPool>,
-
-    #[account(
-        init_if_needed,
-        payer = user,
         seeds = [POOL_AMM_SEED.as_bytes(), ticker.as_bytes()],
         bump,
-        space = 8 + std::mem::size_of::<AMMPool>(),
     )]
     pub amm_pool: Account<'info, AMMPool>,
 
