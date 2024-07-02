@@ -2,7 +2,8 @@ use anchor_lang::prelude::*;
 use crate::bonding_curve::constants::*;
 use crate::bonding_curve::utils::*;
 
-const M: f64 = 1e-9; // Slope of the linear curve in atomic units
+// Adjust the slope M to slow down the price increase
+const M: f64 = 1e-14; // New slope of the linear curve in atomic units, reduced from 1e-9
 const TOKEN_SCALE: f64 = 1e9; // Scale factor for token price in atomic units
 
 fn integral_function_linear(n: u64) -> f64 {

@@ -180,32 +180,47 @@ pub mod memetik {
             check_if_maturity_amount_reached(new_pool_vault_balance, formatted_price);
         if has_reached_maturity_amount {
             bonding_pool.has_matured = true;
-            amm_pool.is_active = true;
 
             //////////////////////////////////////
             // Mint tokens to amm pool token vault
             /////////////////////////////////////
             // NOTE: the sol vault is shared between the bonding pool and the amm pool - no need t0 transfer sol
-            let amm_token_vault = &ctx.accounts.token_vault;
-            let total_mint_supply = ctx.accounts.mint.supply;
-            let auth_seeds = &[
-                POOL_MINT_SEED.as_bytes(),
-                ticker.as_bytes(),
-                &[ctx.bumps.mint],
-            ];
-            let signer = [&auth_seeds[..]];
-            mint_to(
+            let total_sol_vault_balance = new_pool_vault_balance;
+            // Calculate the amount of tokens to mint
+            let amount_tokens = (total_sol_vault_balance as u128)
+                .checked_div(latest_price_per_unit as u128)
+                .ok_or(Error::CalculationError)?;
+
+            let amount_tokens: u64 = amount_tokens
+                .try_into()
+                .map_err(|_| Error::CalculationError)?;
+
+            // Perform the mint_to operation
+            token::mint_to(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     MintTo {
                         authority: ctx.accounts.mint.to_account_info(),
-                        to: amm_token_vault.to_account_info(),
+                        to: ctx.accounts.token_vault.to_account_info(),
                         mint: ctx.accounts.mint.to_account_info(),
                     },
                     &signer,
                 ),
-                total_mint_supply,
+                amount_tokens,
             )?;
+
+            msg!("Lates price per unit: {}", latest_price_per_unit);
+            msg!("Total Sol vault balance: {}", total_sol_vault_balance);
+            msg!("Amount of tokens minted: {}", amount_tokens);
+            msg!("Calced price per unit: {}", total_sol_vault_balance / amount_tokens);
+
+            // Update the AMM pool state
+            amm_pool.is_active = true;
+            amm_pool.sol_balance = total_sol_vault_balance;
+            amm_pool.token_balance = amount_tokens;
+            amm_pool.lp_supply = 0; // Assuming initial LP supply is 0
+            amm_pool.ticker = ticker;
+            amm_pool.mint = ctx.accounts.mint.to_account_info().key();
         }
 
         // if the time to reach maturity has passed and the pool has not reached the maturity amount - set inactive
@@ -471,6 +486,9 @@ pub mod memetik {
         let current_token_balance = amm_pool.token_balance as u128;
         let current_sol_balance = amm_pool.sol_balance as u128;
 
+        msg!("Current SOL reserve: {}", current_sol_balance);
+        msg!("Current token reserve: {}", current_token_balance);
+
         require!(bonding_pool.has_matured, Error::PoolHasNotMaturedAMM);
 
         let amount_in = amount_in as u128;
@@ -480,6 +498,9 @@ pub mod memetik {
             current_token_balance,
             is_sol_to_token,
         );
+
+        msg!("Amount in: {}", amount_in);
+        msg!("Amount out: {}", amount_out);
 
         // Ensure there is sufficient liquidity in the pool
         require!(

@@ -28,4 +28,6 @@ pub enum Error {
     PoolHasNotMaturedAMM,
     #[msg("Pool has mautred. Use Swap.")]
     PoolHasMaturedSwap,
+    #[msg("Calculation Error")]
+    CalculationError
 }

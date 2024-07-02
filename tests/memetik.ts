@@ -305,7 +305,7 @@ describe('memetik', () => {
   it('Pool can mature after reuired MC reached', async () => {
     const buyer = userB;
     const pool = createdPools[0];
-    const BATCH_BUY_AMOUNT = 30_000;
+    const BATCH_BUY_AMOUNT = 10_000_000;
     let hasMatured = false;
     while (!hasMatured) {
       console.log(
@@ -318,6 +318,7 @@ describe('memetik', () => {
           buyer,
           BATCH_BUY_AMOUNT
         );
+        await logTxnInfo(txn);
         const poolAfterPurchase = await program.account.bondingPool.fetch(
           getBondingPoolPDA(pool.ticker)
         );
@@ -371,7 +372,7 @@ describe('memetik', () => {
   it('Can swap SOL for token', async () => {
     const swapper = userB;
     const pool = createdPools[0];
-    const SOL_SWAP_AMOUNT = 7;
+    const SOL_SWAP_AMOUNT = 3;
     try {
       const swapperSolBalBefore = await getSOLBalance(swapper.publicKey);
       const swapperTokenAccount =
